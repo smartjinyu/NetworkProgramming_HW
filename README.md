@@ -2,6 +2,7 @@
 
 This repository is the homework for Network Programming, CS423000 in NTHU.
 
+The IDE for projects in this repo is Clion 2016.3 if no other supplementary instruction.
 
 ### License
 
