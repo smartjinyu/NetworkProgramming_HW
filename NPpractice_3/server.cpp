@@ -41,7 +41,6 @@ int main(int argc, char **argv) {
     bind(listenid, (struct sockaddr *) &servaddr, sizeof(servaddr));
     // use bind to monitor the request on the port
     listen(listenid, LISTENQ);
-    // LISTENQ the max length of the backlog (= complete + incomplete request queue)
     maxfd = listenid; // initialize maxfd
     maxi = -1;
     for (i = 0; i < FD_SETSIZE; i++) {

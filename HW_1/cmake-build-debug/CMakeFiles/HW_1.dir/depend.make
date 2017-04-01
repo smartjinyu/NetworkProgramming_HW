@@ -1,2 +1,2 @@
-# Empty dependencies file for NPpractice_3.
+# Empty dependencies file for HW_1.
 # This may be replaced when dependencies are built.

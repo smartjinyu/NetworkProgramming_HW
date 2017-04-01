@@ -4,7 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_3/main.cpp" "/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_3/cmake-build-debug/CMakeFiles/NPpractice_3.dir/main.cpp.o"
+  "/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/client.cpp" "/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug/CMakeFiles/Client.dir/client.cpp.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")
 

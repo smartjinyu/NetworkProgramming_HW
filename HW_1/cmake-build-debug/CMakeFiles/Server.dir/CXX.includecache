@@ -6,17 +6,15 @@
 
 #IncludeRegexTransform: 
 
-/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_3/client.cpp
-iostream
+/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/server.cpp
+sys/param.h
 -
 netinet/in.h
 -
-strings.h
+memory.h
 -
-arpa/inet.h
+cstdio
 -
 unistd.h
--
-cstring
 -
 

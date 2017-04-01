@@ -6,25 +6,15 @@
 
 #IncludeRegexTransform: 
 
-/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_3/server.cpp
+/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/client.cpp
 netinet/in.h
 -
-strings.h
+memory.h
+-
+arpa/inet.h
 -
 cstdio
 -
 unistd.h
--
-cstring
--
-arpa/inet.h
--
-iostream
--
-signal.h
--
-unistd.h
--
-sys/wait.h
 -
 
