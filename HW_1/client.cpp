@@ -16,8 +16,6 @@ int max(int a, int b) {
     return a > b ? a : b;
 }
 
-
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 void str_cli(FILE *fp,int sockfd){

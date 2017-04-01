@@ -9,9 +9,13 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <arpa/inet.h>
+#include <wait.h>
+#include <errno.h>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
+char curDir [FD_SETSIZE][128];
+char defaultDir [128];
 
 int listFiles(int sockfd) {
     char buf[MAXLINE];
@@ -43,15 +47,12 @@ int listFiles(int sockfd) {
     return 0;
 }
 
-int changeDir(char path[],int sockfd){
+int changeDir(char path[],int sockfd,int i){
     if(chdir(path)==0){
-        char buf[MAXLINE];
-        FILE *fp;
-        bzero(&buf,sizeof(buf));
-
-        if(getcwd(buf,sizeof(buf))!=NULL){
+        bzero(&curDir[i],sizeof(curDir[i]));
+        if(getcwd(curDir[i],sizeof(curDir[i]))!=NULL){
             write(sockfd,"Current path is ",16);
-            write(sockfd,buf,strlen(buf));
+            write(sockfd,curDir[i],strlen(curDir[i]));
             write(sockfd,"\n",1);
         }else{
             write(sockfd,"Something went wrong...\n",24);
@@ -64,6 +65,7 @@ int changeDir(char path[],int sockfd){
     }
 
 }
+
 
 
 #pragma clang diagnostic push
@@ -87,11 +89,17 @@ int main(int argc, char **argv){
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);// for any interface on the server
     serverAddr.sin_port = htons((uint16_t)atoi(argv[1]));
-
+    
     bind(listenid,(struct sockaddr *)&serverAddr,sizeof(serverAddr));
     // monitor the request on the port
-    listen(listenid,LISTENQ);
+    listen(listenid,LISTENQ);    
     // LISTENQ the max length of the backlog (= complete + incomplete request queue)
+    for(int j=0;j<FD_SETSIZE;j++){
+        bzero(curDir[j],sizeof(curDir[j]));
+    }
+    bzero(defaultDir,sizeof(defaultDir));
+    getcwd(defaultDir,sizeof(defaultDir));
+    printf("default dir0 = %s \n",defaultDir);
 
     maxfd = listenid;
     maxi = -1;
@@ -114,6 +122,8 @@ int main(int argc, char **argv){
                 if(client[i]<0){
                     // find the first available descriptor
                     client[i]=connfd;
+                    strcpy(curDir[i],defaultDir);
+                    printf("default dir = %s \n",curDir[i]);
                     break;
                 }
             }
@@ -151,9 +161,13 @@ int main(int argc, char **argv){
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
                     client[i] = -1;
+                    bzero(curDir[i],sizeof(curDir[i]));
 
                 } else {
                     //write(sockfd, line, (size_t)n);
+                    printf("change to dir = %s \n",curDir[i]);
+                    chdir(curDir[i]);
+
                     if(line[0]=='l' && line[1]=='s'){
                         listFiles(sockfd);
                     }else if(line[0]=='c' && line[1]=='d'){
@@ -163,7 +177,7 @@ int main(int argc, char **argv){
                         for(j = 3;line[j]!='\n' && line[j]!='\000';j++){
                             dir[j-3]=line[j];
                         }
-                        changeDir(dir,sockfd);
+                        changeDir(dir,sockfd,i);
                     }
 
                 }

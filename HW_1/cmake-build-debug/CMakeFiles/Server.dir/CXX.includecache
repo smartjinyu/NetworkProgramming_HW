@@ -21,4 +21,8 @@ cstdlib
 -
 arpa/inet.h
 -
+wait.h
+-
+errno.h
+-
 
