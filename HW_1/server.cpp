@@ -13,9 +13,7 @@
 #define MAXLINE 4096
 #define LISTENQ 1024
 
-
 int listFiles(int sockfd) {
-
     char buf[MAXLINE];
     FILE *fp;
 
@@ -44,6 +42,29 @@ int listFiles(int sockfd) {
     }
     return 0;
 }
+
+int changeDir(char path[],int sockfd){
+    if(chdir(path)==0){
+        char buf[MAXLINE];
+        FILE *fp;
+        bzero(&buf,sizeof(buf));
+
+        if(getcwd(buf,sizeof(buf))!=NULL){
+            write(sockfd,"Current path is ",16);
+            write(sockfd,buf,strlen(buf));
+            write(sockfd,"\n",1);
+        }else{
+            write(sockfd,"Something went wrong...\n",24);
+            return -1;
+        }
+        return 0;
+    }else{
+        write(sockfd,"Something went wrong...\n",24);
+        return -1;
+    }
+
+}
+
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -135,6 +156,14 @@ int main(int argc, char **argv){
                     //write(sockfd, line, (size_t)n);
                     if(line[0]=='l' && line[1]=='s'){
                         listFiles(sockfd);
+                    }else if(line[0]=='c' && line[1]=='d'){
+                        char dir[MAXLINE];
+                        bzero(&dir,sizeof(dir));
+                        int j;
+                        for(j = 3;line[j]!='\n' && line[j]!='\000';j++){
+                            dir[j-3]=line[j];
+                        }
+                        changeDir(dir,sockfd);
                     }
 
                 }
