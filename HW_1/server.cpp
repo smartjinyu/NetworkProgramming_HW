@@ -13,6 +13,38 @@
 #define MAXLINE 4096
 #define LISTENQ 1024
 
+
+int listFiles(int sockfd) {
+
+    char buf[MAXLINE];
+    FILE *fp;
+
+    bzero(&buf,sizeof(buf));
+
+    if(getcwd(buf,sizeof(buf))!=NULL){
+        write(sockfd,"List files in ",14);
+        write(sockfd,buf,strlen(buf));
+        write(sockfd,"\n",1);
+    }else{
+        write(sockfd,"Something went wrong...\n",24);
+        return -1;
+    }
+    if ((fp = popen("ls -a", "r")) == NULL) {
+        write(sockfd,"Something went wrong...\n",24);
+        return -1;
+    }
+
+    bzero(&buf,sizeof(buf));
+    while (fgets(buf, MAXLINE, fp) != NULL) {
+        write(sockfd,buf,strlen(buf));
+    }
+
+    if(pclose(fp))  {
+        return -1;
+    }
+    return 0;
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 int main(int argc, char **argv){
@@ -39,6 +71,7 @@ int main(int argc, char **argv){
     // monitor the request on the port
     listen(listenid,LISTENQ);
     // LISTENQ the max length of the backlog (= complete + incomplete request queue)
+
     maxfd = listenid;
     maxi = -1;
     for(i=0;i<FD_SETSIZE;i++){
@@ -85,6 +118,7 @@ int main(int argc, char **argv){
                 continue; // skip empty client
             }
             if (FD_ISSET(sockfd, &rset)) {
+                bzero(&line,sizeof(line));
                 if ((n = read(sockfd, line, MAXLINE)) == 0) {
                     // connection closed by client
                     struct sockaddr_in terminatedAddr;
@@ -98,11 +132,11 @@ int main(int argc, char **argv){
                     client[i] = -1;
 
                 } else {
-                    write(sockfd, line, (size_t)n);
-                    fputs(line,stdout);
-                    for(int j=0;j<sizeof(line);j++){
-                        line[j]=0;
+                    //write(sockfd, line, (size_t)n);
+                    if(line[0]=='l' && line[1]=='s'){
+                        listFiles(sockfd);
                     }
+
                 }
             }
             if (--nready < 0) {
