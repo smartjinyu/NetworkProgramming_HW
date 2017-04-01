@@ -7,6 +7,8 @@
 #include <memory.h>
 #include <cstdio>
 #include <unistd.h>
+#include <cstdlib>
+#include <arpa/inet.h>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
@@ -22,11 +24,16 @@ int main(int argc, char **argv){
     struct sockaddr_in serverAddr,clientAddr;
     socklen_t clientLen;
 
+    if(argc!=2){
+        printf("wrong arguments! Please run ./server.out <port> \n");
+        return -1;
+    }
+
     listenid = socket(AF_INET,SOCK_STREAM,0);
     bzero(&serverAddr,sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);// for any interface on the server
-    serverAddr.sin_port = htons(9877);
+    serverAddr.sin_port = htons((uint16_t)atoi(argv[1]));
 
     bind(listenid,(struct sockaddr *)&serverAddr,sizeof(serverAddr));
     // monitor the request on the port
@@ -45,7 +52,9 @@ int main(int argc, char **argv){
         // number of ready descriptors
         if(FD_ISSET(listenid,&rset)){
             clientLen = sizeof(clientAddr);
-            connfd=accept(listenid,(struct sockaddr *) &clientAddr,&clientLen);
+            connfd = accept(listenid,(struct sockaddr *) &clientAddr,&clientLen);
+            printf("New client connected, ip = %s, port = %d\n",
+                   inet_ntoa(clientAddr.sin_addr),ntohs(clientAddr.sin_port));
             // new client connection
             for(i=0;i<FD_SETSIZE;i++){
                 if(client[i]<0){
@@ -78,9 +87,16 @@ int main(int argc, char **argv){
             if (FD_ISSET(sockfd, &rset)) {
                 if ((n = read(sockfd, line, MAXLINE)) == 0) {
                     // connection closed by client
+                    struct sockaddr_in terminatedAddr;
+                    socklen_t len = sizeof(terminatedAddr);
+                    getpeername(sockfd,(struct sockaddr *)&terminatedAddr,&len);
+                    printf("Client terminated, ip = %s, port = %d\n",
+                           inet_ntoa(terminatedAddr.sin_addr),ntohs(terminatedAddr.sin_port));
+
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
                     client[i] = -1;
+
                 } else {
                     write(sockfd, line, (size_t)n);
                     fputs(line,stdout);

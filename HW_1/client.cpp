@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <cstdio>
 #include <unistd.h>
+#include <cstdlib>
 
 #define MAXLINE 4096
 
@@ -40,6 +41,7 @@ void str_cli(FILE *fp,int sockfd){
                     //return; // normal termination
                 } else {
                     printf("Client: Server terminated prematurely");
+                    exit(-1);
                 }
             }
             fputs(recvline, stdout);
@@ -88,11 +90,15 @@ void str_cli(FILE *fp,int sockfd){
 int main(int argc,char **argv){
     int sockfd;
     struct sockaddr_in serverAddr;
+    if(argc!=3){
+        printf("wrong arguments! Please run ./client.out <ip> <port> \n");
+        return -1;
+    }
     sockfd = socket(AF_INET,SOCK_STREAM,0);
     bzero(&serverAddr,sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(9877);// port
-    inet_pton(AF_INET,"127.0.0.1",&serverAddr.sin_addr);
+    serverAddr.sin_port = htons((uint16_t)atoi(argv[2]));// port
+    inet_pton(AF_INET,argv[1],&serverAddr.sin_addr);
     connect(sockfd,(struct sockaddr *)&serverAddr,sizeof(serverAddr));
     str_cli(stdin,sockfd);
     return 0;

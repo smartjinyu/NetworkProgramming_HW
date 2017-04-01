@@ -17,4 +17,8 @@ cstdio
 -
 unistd.h
 -
+cstdlib
+-
+arpa/inet.h
+-
 
