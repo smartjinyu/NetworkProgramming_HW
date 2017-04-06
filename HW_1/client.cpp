@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <cstdlib>
 
-#define MAXLINE 4096
+#define MAXLINE 2048
 
 int max(int a, int b) {
     return a > b ? a : b;
@@ -21,7 +21,7 @@ int max(int a, int b) {
 void str_cli(FILE *fp,int sockfd){
     int maxfdp1,stdineof;
     fd_set rset;
-    char sendline[MAXLINE],recvline[MAXLINE];
+    char sendline[MAXLINE+1],recvline[MAXLINE+1];
     FD_ZERO(&rset);
     stdineof = 0; // use for test readable, 0:connect
     while (true) {
@@ -36,7 +36,7 @@ void str_cli(FILE *fp,int sockfd){
 
         if (FD_ISSET(sockfd, &rset)) {
             // socket is readable
-            if (read(sockfd, recvline, MAXLINE) == 0) {
+            if (recv(sockfd, recvline, MAXLINE,0) == 0) {
                 if (stdineof == 1) {
                     //return; // normal termination
                 } else {
@@ -44,11 +44,50 @@ void str_cli(FILE *fp,int sockfd){
                     exit(-1);
                 }
             }
-            fputs(recvline, stdout);
-            for(int j=0;j<sizeof(recvline);j++){
-                recvline[j]=0;
-            }
 
+            if(recvline[0]=='g' && recvline[1]=='e' && recvline[2]=='t'){
+                // download file from server
+                // recvline: get:test.c,255
+
+                char filename[256],filesize[256];
+                int file_size = 0;
+                int j;
+                for(j=4;recvline[j]!=',';j++){
+                    filename[j-4]=recvline[j];
+                }
+                j++;
+                int k;
+                for(k=0;recvline[j]!=0;j++,k++){
+                    filesize[k]=recvline[j];
+                }
+                file_size = atoi(filesize);
+
+                FILE *recvFile;
+                recvFile = fopen(filename,"w");
+                ssize_t len;
+                bzero(recvline,sizeof(recvline));
+                int received_data = 0;
+                bzero(recvline,sizeof(recvline));
+                while(1){
+                    len = read(sockfd,recvline,MAXLINE);
+                    if(len<=0){
+                        break;
+                    }
+                    received_data+=len;
+                    fwrite(recvline,sizeof(char),len,recvFile);
+                    if(received_data >= file_size){
+                        break;
+                    }
+                }
+                printf("Download Complete!\n");
+                fclose(recvFile);
+
+            }else{
+                fputs(recvline, stdout);
+                fflush(stdout);
+                //printf("%s\n",recvline);
+                bzero(recvline,sizeof(recvline));
+            }
         }
 
         if (FD_ISSET(fileno(fp), &rset)) {
@@ -65,18 +104,9 @@ void str_cli(FILE *fp,int sockfd){
                     continue;
                 }
                 //}
-
+                
                 write(sockfd, sendline, strlen(sendline));
-                for (int j = 0; j < sizeof(sendline); j++) {
-                    sendline[j] = 0;
-                }
-
-
-                write(sockfd, sendline, strlen(sendline));
-                for (int j = 0; j < sizeof(sendline); j++) {
-                    sendline[j] = 0;
-                }
-
+                bzero(sendline,sizeof(sendline));
 
             }
 

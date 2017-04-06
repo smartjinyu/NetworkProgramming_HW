@@ -21,8 +21,12 @@ cstdlib
 -
 arpa/inet.h
 -
-wait.h
--
 errno.h
+-
+fcntl.h
+-
+sys/stat.h
+-
+sys/sendfile.h
 -
 

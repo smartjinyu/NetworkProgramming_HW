@@ -9,10 +9,12 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <arpa/inet.h>
-#include <wait.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
 
-#define MAXLINE 4096
+#define MAXLINE 2048
 #define LISTENQ 1024
 char curDir [FD_SETSIZE][128];
 char defaultDir [128];
@@ -63,9 +65,35 @@ int changeDir(char path[],int sockfd,int i){
         write(sockfd,"Something went wrong...\n",24);
         return -1;
     }
-
 }
 
+int downloadFile(char* filename,int sockfd,int i){
+
+    int fd = open(filename,O_RDONLY);
+    if(fd==-1){
+        write(sockfd,"Failed to open file:",20);
+        write(sockfd,strerror(errno),strlen(strerror(errno)));
+        fprintf(stderr,"Failed to open file %s: %s\n",filename,strerror(errno));
+        return -1;
+    }
+    struct stat stat_buf;// file size to be sent
+    fstat(fd,&stat_buf);
+    off_t offset = 0;
+    
+
+    char header[256];
+    sprintf(header,"get:%s,%d",filename,(int)stat_buf.st_size);
+    write(sockfd,header,sizeof(header));
+    
+    int remain_data = (int)stat_buf.st_size;
+    ssize_t len;
+    while((len=sendfile(sockfd,fd,&offset,MAXLINE))>0){
+        remain_data -= len;
+    }
+    close(fd);
+
+    return 0;
+}
 
 
 #pragma clang diagnostic push
@@ -89,17 +117,16 @@ int main(int argc, char **argv){
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);// for any interface on the server
     serverAddr.sin_port = htons((uint16_t)atoi(argv[1]));
-    
+
     bind(listenid,(struct sockaddr *)&serverAddr,sizeof(serverAddr));
     // monitor the request on the port
-    listen(listenid,LISTENQ);    
+    listen(listenid,LISTENQ);
     // LISTENQ the max length of the backlog (= complete + incomplete request queue)
     for(int j=0;j<FD_SETSIZE;j++){
         bzero(curDir[j],sizeof(curDir[j]));
     }
     bzero(defaultDir,sizeof(defaultDir));
     getcwd(defaultDir,sizeof(defaultDir));
-    printf("default dir0 = %s \n",defaultDir);
 
     maxfd = listenid;
     maxi = -1;
@@ -123,7 +150,6 @@ int main(int argc, char **argv){
                     // find the first available descriptor
                     client[i]=connfd;
                     strcpy(curDir[i],defaultDir);
-                    printf("default dir = %s \n",curDir[i]);
                     break;
                 }
             }
@@ -165,21 +191,29 @@ int main(int argc, char **argv){
 
                 } else {
                     //write(sockfd, line, (size_t)n);
-                    printf("change to dir = %s \n",curDir[i]);
                     chdir(curDir[i]);
-
                     if(line[0]=='l' && line[1]=='s'){
+                        // list files
                         listFiles(sockfd);
-                    }else if(line[0]=='c' && line[1]=='d'){
-                        char dir[MAXLINE];
-                        bzero(&dir,sizeof(dir));
+                    }else if(line[0]=='c' && line[1]=='d') {
+                        // change directory;
+                        char dir[128];
+                        bzero(&dir, sizeof(dir));
                         int j;
-                        for(j = 3;line[j]!='\n' && line[j]!='\000';j++){
-                            dir[j-3]=line[j];
+                        for (j = 3; line[j] != '\n' && line[j] != '\000'; j++) {
+                            dir[j - 3] = line[j];
                         }
-                        changeDir(dir,sockfd,i);
+                        changeDir(dir, sockfd, i);
+                    }else if(line[0]=='g' && line[1]=='e' && line[2]=='t'){
+                        // download file from server
+                        char filename[128];
+                        bzero(&filename, sizeof(filename));
+                        int j;
+                        for (j = 4; line[j] != '\n' && line[j] != '\000'; j++) {
+                            filename[j - 4] = line[j];
+                        }
+                        downloadFile(filename,sockfd,i);
                     }
-
                 }
             }
             if (--nready < 0) {
