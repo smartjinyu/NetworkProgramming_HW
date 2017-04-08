@@ -19,4 +19,12 @@ unistd.h
 -
 cstdlib
 -
+fcntl.h
+-
+sys/stat.h
+-
+errno.h
+-
+sys/sendfile.h
+-
 

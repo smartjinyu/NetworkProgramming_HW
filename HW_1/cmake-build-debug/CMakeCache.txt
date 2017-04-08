@@ -178,12 +178,6 @@ HW_1_BINARY_DIR:STATIC=/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cm
 //Value Computed by CMake
 HW_1_SOURCE_DIR:STATIC=/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1
 
-//Value Computed by CMake
-NPpractice_3_BINARY_DIR:STATIC=/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug
-
-//Value Computed by CMake
-NPpractice_3_SOURCE_DIR:STATIC=/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1
-
 //Path to a program.
 ProcessorCount_cmd_getconf:FILEPATH=/usr/bin/getconf
 

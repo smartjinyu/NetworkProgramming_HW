@@ -20,10 +20,10 @@ char curDir [FD_SETSIZE][128];
 char defaultDir [128];
 
 int listFiles(int sockfd) {
-    char buf[MAXLINE];
+    char buf[MAXLINE]={0};
     FILE *fp;
 
-    bzero(&buf,sizeof(buf));
+    //bzero(&buf,sizeof(buf));
 
     if(getcwd(buf,sizeof(buf))!=NULL){
         write(sockfd,"List files in ",14);
@@ -68,8 +68,11 @@ int changeDir(char path[],int sockfd,int i){
 }
 
 int downloadFile(char* filename,int sockfd,int i){
+    char currentDir[256]={0};
+    getcwd(currentDir,sizeof(currentDir));
+    printf("Current dir is %s\n",currentDir);
 
-    int fd = open(filename,O_RDONLY);
+    int fd = open(filename,O_RDONLY | O_NONBLOCK);
     if(fd==-1){
         write(sockfd,"Failed to open file:",20);
         write(sockfd,strerror(errno),strlen(strerror(errno)));
@@ -81,18 +84,67 @@ int downloadFile(char* filename,int sockfd,int i){
     off_t offset = 0;
     
 
-    char header[256];
+    char header[256]={0};
     sprintf(header,"get:%s,%d",filename,(int)stat_buf.st_size);
     write(sockfd,header,sizeof(header));
     
     int remain_data = (int)stat_buf.st_size;
+    //printf("filesize = %d\n",remain_data);
     ssize_t len;
     while((len=sendfile(sockfd,fd,&offset,MAXLINE))>0){
         remain_data -= len;
-    }
-    close(fd);
+        //printf("len = %d, remaining = %d\n",len,remain_data);
 
+    }
+    //printf("last len = %d\n",len);
+    close(fd);
+    //printf("send successfully!\n");
     return 0;
+}
+
+
+int uploadFile(char* header,int sockfd,int i){
+    // download file from server
+    // recvline: get:test.c,255
+
+    char filename[256]={0},filesize[256]={0};
+    int file_size = 0;
+    int j;
+    for(j=4;header[j]!=',';j++){
+        filename[j-4]=header[j];
+    }
+    j++;
+    int k;
+    for(k=0;header[j]!=0;j++,k++){
+        filesize[k]=header[j];
+    }
+    file_size = atoi(filesize);
+    
+    printf("filename = %s, filesize = %d\n",filename,file_size);
+    
+    char recvline[MAXLINE+1]={0};
+    FILE *recvFile;
+    recvFile = fopen(filename,"w");
+    ssize_t len;
+    bzero(recvline,sizeof(recvline));
+    int received_data = 0;
+    
+    while(1){
+        len = read(sockfd,recvline,MAXLINE);
+        if(len<=0){
+            break;
+        }
+        received_data+=len;
+        fwrite(recvline,sizeof(char),len,recvFile);
+        if(received_data >= file_size){
+            break;
+        }
+    }
+    printf("Upload Complete!\n");
+    write(sockfd,"Upload Complete!\n",17);
+    fclose(recvFile);
+    return 0;
+
 }
 
 
@@ -103,7 +155,7 @@ int main(int argc, char **argv){
     int nready,client[FD_SETSIZE];
     fd_set rset,allset;
     ssize_t n;
-    char line[MAXLINE];
+    char recvline[MAXLINE];
     struct sockaddr_in serverAddr,clientAddr;
     socklen_t clientLen;
 
@@ -175,8 +227,8 @@ int main(int argc, char **argv){
                 continue; // skip empty client
             }
             if (FD_ISSET(sockfd, &rset)) {
-                bzero(&line,sizeof(line));
-                if ((n = read(sockfd, line, MAXLINE)) == 0) {
+                bzero(&recvline,sizeof(recvline));
+                if ((n = read(sockfd, recvline, MAXLINE)) == 0) {
                     // connection closed by client
                     struct sockaddr_in terminatedAddr;
                     socklen_t len = sizeof(terminatedAddr);
@@ -190,29 +242,38 @@ int main(int argc, char **argv){
                     bzero(curDir[i],sizeof(curDir[i]));
 
                 } else {
-                    //write(sockfd, line, (size_t)n);
-                    chdir(curDir[i]);
-                    if(line[0]=='l' && line[1]=='s'){
+                    //write(sockfd, recvline, (size_t)n);
+                    fputs(recvline, stdout);
+                    fflush(stdout);
+                    if(recvline[0]=='l' && recvline[1]=='s'){
                         // list files
+                        chdir(curDir[i]);
                         listFiles(sockfd);
-                    }else if(line[0]=='c' && line[1]=='d') {
+                    }else if(recvline[0]=='c' && recvline[1]=='d') {
                         // change directory;
-                        char dir[128];
+                        chdir(curDir[i]);
+                        char dir[128]={0};
                         bzero(&dir, sizeof(dir));
                         int j;
-                        for (j = 3; line[j] != '\n' && line[j] != '\000'; j++) {
-                            dir[j - 3] = line[j];
+                        for (j = 3; recvline[j] != '\n' && recvline[j] != '\000'; j++) {
+                            dir[j - 3] = recvline[j];
                         }
                         changeDir(dir, sockfd, i);
-                    }else if(line[0]=='g' && line[1]=='e' && line[2]=='t'){
+                    }else if(recvline[0]=='g' && recvline[1]=='e' && recvline[2]=='t'){
                         // download file from server
-                        char filename[128];
-                        bzero(&filename, sizeof(filename));
-                        int j;
-                        for (j = 4; line[j] != '\n' && line[j] != '\000'; j++) {
-                            filename[j - 4] = line[j];
+                        chdir(curDir[i]);
+                        char filename[128]={0};
+                        for (int j = 4; recvline[j] != '\n' && recvline[j] != '\000'; j++) {
+                            filename[j - 4] = recvline[j];
                         }
                         downloadFile(filename,sockfd,i);
+                    }else if(recvline[0]=='p' && recvline[1]=='u' && recvline[2]=='t'){
+                        // upload file to server
+                        chdir(curDir[i]);
+                        uploadFile(recvline,sockfd,i);
+                    }else{
+//                        fputs(recvline, stdout);
+//                        fflush(stdout);
                     }
                 }
             }
