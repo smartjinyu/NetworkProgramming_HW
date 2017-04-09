@@ -49,6 +49,64 @@ int uploadFile(char *filename, int sockfd) {
     return 0;
 }
 
+void downloadFile(char *recvline, int sockfd) {
+    char filename[256] = {0}, filesize[256] = {0};
+    int file_size = 0;
+    int j;
+    for (j = 4; recvline[j] != ','; j++) {
+        filename[j - 4] = recvline[j];
+    }
+    j++;
+    int k;
+    for (k = 0; recvline[j] != 0; j++, k++) {
+        filesize[k] = recvline[j];
+    }
+    file_size = atoi(filesize);
+    //printf("recvline = %s\n",recvline);
+    //printf("filename = %s, filesize = %d\n",filename,file_size);
+    if (file_size != -1) {
+        // file_size == 0 means something is wrong
+        if (remove(filename) != 0) {
+            //perror( "Error deleting file\n" );
+        } else {
+            //puts( "File successfully deleted\n" );
+        }
+        FILE *recvFile = NULL;
+        recvFile = fopen(filename, "w+");
+        if (recvFile != NULL) {
+            ssize_t len;
+            bzero(recvline, sizeof(recvline));
+            int received_data = 0;
+            while (1) {
+                //printf("recv started!\n");
+                len = recv(sockfd, recvline, MAXLINE, 0);
+                if (len <= 0) {
+                    break;
+                }
+                //printf("recv completed!\n");
+                received_data += len;
+                printf("len = %d, received = %d\n", (int) len, received_data);
+                fwrite(recvline, sizeof(char), (size_t) len, recvFile);
+                fflush(recvFile);
+
+                //printf("fwrite completed!\n");
+                if (received_data >= file_size) {
+                    break;
+                }
+                bzero(recvline, sizeof(recvline));
+
+            }
+            printf("Download Complete!\n");
+            fclose(recvFile);
+        } else {
+            fputs("error when opening file", stderr);
+        }
+    } else {
+        printf("Failed to download file from server!");
+    }
+
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 
@@ -79,63 +137,11 @@ void str_cli(FILE *fp, int sockfd) {
                     printf("Client: Server terminated prematurely");
                     exit(-1);
                 }
-
-
             }
-
             if (recvline[0] == 'g' && recvline[1] == 'e' && recvline[2] == 't') {
                 // download file from server
                 // recvline: get:test.c,255
-
-                char filename[256] = {0}, filesize[256] = {0};
-                int file_size = 0;
-                int j;
-                for (j = 4; recvline[j] != ','; j++) {
-                    filename[j - 4] = recvline[j];
-                }
-                j++;
-                int k;
-                for (k = 0; recvline[j] != 0; j++, k++) {
-                    filesize[k] = recvline[j];
-                }
-                file_size = atoi(filesize);
-                printf("filename = %s, filesize = %d\n",filename,file_size);
-                if(remove(filename)!= 0){
-                    perror( "Error deleting file\n" );
-
-                } else {
-                    puts( "File successfully deleted\n" );
-                }
-                FILE *recvFile = NULL;
-                recvFile = fopen(filename, "w+");
-                if (recvFile != NULL) {
-                    ssize_t len;
-                    bzero(recvline, sizeof(recvline));
-                    int received_data = 0;
-                    while (1) {
-                        //printf("recv started!\n");
-                        len = recv(sockfd, recvline, MAXLINE, 0);
-                        if (len <= 0) {
-                            break;
-                        }
-                        //printf("recv completed!\n");
-                        received_data += len;
-                        printf("len = %d, received = %d\n",(int)len,received_data);
-                        fwrite(recvline, sizeof(char), (size_t)len, recvFile);
-                        fflush(recvFile);
-
-                        //printf("fwrite completed!\n");
-                        if (received_data >= file_size) {
-                            break;
-                        }
-                        bzero(recvline, sizeof(recvline));
-
-                    }
-                    printf("Download Complete!\n");
-                    fclose(recvFile);
-                } else {
-                    fputs("error when opening file", stderr);
-                }
+                downloadFile(recvline, sockfd);
             } else {
                 fputs(recvline, stdout);
                 fflush(stdout);
