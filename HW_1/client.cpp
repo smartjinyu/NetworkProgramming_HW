@@ -100,9 +100,14 @@ void str_cli(FILE *fp, int sockfd) {
                 }
                 file_size = atoi(filesize);
                 printf("filename = %s, filesize = %d\n",filename,file_size);
+                if(remove(filename)!= 0){
+                    perror( "Error deleting file\n" );
 
-                FILE *recvFile;
-                recvFile = fopen(filename, "w");
+                } else {
+                    puts( "File successfully deleted\n" );
+                }
+                FILE *recvFile = NULL;
+                recvFile = fopen(filename, "w+");
                 if (recvFile != NULL) {
                     ssize_t len;
                     bzero(recvline, sizeof(recvline));
@@ -113,25 +118,24 @@ void str_cli(FILE *fp, int sockfd) {
                         if (len <= 0) {
                             break;
                         }
-
-
-
                         //printf("recv completed!\n");
                         received_data += len;
-                        printf("len = %d, received = %d\n",len,received_data);
-                        fwrite(recvline, sizeof(char), len, recvFile);
+                        printf("len = %d, received = %d\n",(int)len,received_data);
+                        fwrite(recvline, sizeof(char), (size_t)len, recvFile);
+                        fflush(recvFile);
+
                         //printf("fwrite completed!\n");
                         if (received_data >= file_size) {
                             break;
                         }
                         bzero(recvline, sizeof(recvline));
+
                     }
                     printf("Download Complete!\n");
                     fclose(recvFile);
                 } else {
                     fputs("error when opening file", stderr);
                 }
-
             } else {
                 fputs(recvline, stdout);
                 fflush(stdout);

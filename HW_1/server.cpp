@@ -109,7 +109,9 @@ int downloadFile(char *filename, int sockfd, int i) {
     write(sockfd, header, strlen(header)+1);
     int f = open(filename,O_RDONLY);
     if(f<0){
-        perror(filename);
+        write(sockfd, "Failed to open file:", 20);
+        write(sockfd, strerror(errno), strlen(strerror(errno))+1);
+        fprintf(stderr, "Failed to open file %s: %s\n", filename, strerror(errno));
         return -1;
     }
     int sent = 0, remain = (int) st.st_size;
@@ -303,9 +305,20 @@ int main(int argc, char **argv) {
                         // upload file to server
                         chdir(curDir[i]);
                         uploadFile(recvline, sockfd, i);
-                    } else {
-//                        fputs(recvline, stdout);
-//                        fflush(stdout);
+                    } else if(recvline[0] == 'm' && recvline[1] == 'k' && recvline[2] == 'd' && recvline[3] == 'i' && recvline[4] == 'r'){
+                        chdir(curDir[i]);
+                        char pathname[128] = {0};
+                        for (int j = 6; recvline[j] != '\n' && recvline[j] != '\000'; j++) {
+                            pathname[j - 6] = recvline[j];
+                        }
+                        if(mkdir(pathname,0777)==0){
+                            write(sockfd,"Create directory successfully!\n",31);
+                        }else{
+                            write(sockfd, "Failed to create dir:", 21);
+                            write(sockfd, strerror(errno), strlen(strerror(errno))+1);
+                            fprintf(stderr, "Failed to create dir %s: %s\n", pathname, strerror(errno));
+                        }
+
                     }
                 }
                 if (--nready <= 0) {
