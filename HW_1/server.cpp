@@ -68,11 +68,8 @@ int changeDir(char path[], int sockfd, int i) {
 }
 
 int downloadFile(char *filename, int sockfd, int i) {
-    char currentDir[256] = {0};
-    getcwd(currentDir, sizeof(currentDir));
-    //printf("Current dir is %s\n", currentDir);
     /*
-    int fd = open(filename, O_RDONLY | O_NONBLOCK);
+    int fd = open(filename, O_RDONLY);
     if (fd == -1) {
         write(sockfd, "Failed to open file:", 20);
         write(sockfd, strerror(errno), strlen(strerror(errno))+1);
@@ -132,53 +129,73 @@ int downloadFile(char *filename, int sockfd, int i) {
     }
     close(f);
     printf("Sent successfully\n");
-
-
     return 0;
 }
 
 
-int uploadFile(char *header, int sockfd, int i) {
-    // download file from server
-    // recvline: get:test.c,255
+int uploadFile(char *recvline, int sockfd, int i) {
+    // upload file to server
+    // recvline: put:test.c,255
 
     char filename[256] = {0}, filesize[256] = {0};
     int file_size = 0;
     int j;
-    for (j = 4; header[j] != ','; j++) {
-        filename[j - 4] = header[j];
+    for (j = 4; recvline[j] != ','; j++) {
+        filename[j - 4] = recvline[j];
     }
     j++;
     int k;
-    for (k = 0; header[j] != 0; j++, k++) {
-        filesize[k] = header[j];
+    for (k = 0; recvline[j] != 0; j++, k++) {
+        filesize[k] = recvline[j];
     }
     file_size = atoi(filesize);
-
-    printf("filename = %s, filesize = %d\n", filename, file_size);
-
-    char recvline[MAXLINE + 1] = {0};
-    FILE *recvFile;
-    recvFile = fopen(filename, "w");
-    ssize_t len;
-    bzero(recvline, sizeof(recvline));
-    int received_data = 0;
-
-    while (1) {
-        len = read(sockfd, recvline, MAXLINE);
-        if (len <= 0) {
-            break;
+    //printf("recvline = %s\n",recvline);
+    //printf("filename = %s, filesize = %d\n",filename,file_size);
+    if (file_size != -1) {
+        // file_size == 0 means something is wrong
+        if (remove(filename) != 0) {
+            //perror( "Error deleting file\n" );
+        } else {
+            //puts( "File successfully deleted\n" );
         }
-        received_data += len;
-        fwrite(recvline, sizeof(char), len, recvFile);
-        if (received_data >= file_size) {
-            break;
+        FILE *recvFile = NULL;
+        recvFile = fopen(filename, "w+");
+        if (recvFile != NULL) {
+            ssize_t len;
+            bzero(recvline, sizeof(recvline));
+            int received_data = 0;
+            while (1) {
+                //printf("recv started!\n");
+                len = recv(sockfd, recvline, MAXLINE, 0);
+                if (len <= 0) {
+                    break;
+                }
+                //printf("recv completed!\n");
+                received_data += len;
+                //printf("len = %d, received = %d\n", (int) len, received_data);
+                fwrite(recvline, sizeof(char), (size_t) len, recvFile);
+                fflush(recvFile);
+
+                //printf("fwrite completed!\n");
+                if (received_data >= file_size) {
+                    break;
+                }
+                bzero(recvline, sizeof(recvline));
+
+            }
+            printf("Upload Complete!\n");
+            write(sockfd, "Upload Complete!\n", 17);
+            fclose(recvFile);
+            return 0;
+        } else {
+            fputs("error when opening file", stderr);
         }
+    } else {
+        printf("Failed to upload file to server!");
     }
-    printf("Upload Complete!\n");
-    write(sockfd, "Upload Complete!\n", 17);
-    fclose(recvFile);
-    return 0;
+    write(sockfd, "Upload failed!\n", 15);
+    return -1;
+
 
 }
 

@@ -22,30 +22,37 @@ int max(int a, int b) {
 
 
 int uploadFile(char *filename, int sockfd) {
-    int fd = open(filename, O_RDONLY);
-    if (fd == -1) {
+    int f = open(filename, O_RDONLY);
+    if (f < 0) {
+        char header[256] = {0};
+        sprintf(header, "put:%s,%d", filename, -1);
+        write(sockfd, header, strlen(header) + 1);
         write(sockfd, "Failed to open file:", 20);
-        write(sockfd, strerror(errno), strlen(strerror(errno)));
+        write(sockfd, strerror(errno), strlen(strerror(errno)) + 1);
         fprintf(stderr, "Failed to open file %s: %s\n", filename, strerror(errno));
         return -1;
     }
-
-    struct stat stat_buf;// file size to be sent
-    fstat(fd, &stat_buf);
-    off_t offset = 0;
-
-
+    struct stat st;
+    stat(filename, &st);
     char header[256] = {0};
-    sprintf(header, "put:%s,%d", filename, (int) stat_buf.st_size);
-    write(sockfd, header, sizeof(header));
-
-    int remain_data = (int) stat_buf.st_size;
-    ssize_t len;
-    while ((len = sendfile(sockfd, fd, &offset, MAXLINE)) > 0) {
-        remain_data -= len;
+    sprintf(header, "put:%s,%d", filename, (int) st.st_size);
+    //printf("filesize = %d\n",(int)st.st_size);
+    write(sockfd, header, strlen(header) + 1);
+    int sent = 0, remain = (int) st.st_size;
+    //printf("sending files... \n");
+    ssize_t read_bytes, sent_bytes;
+    char sendbuf[MAXLINE] = {0};
+    while ((read_bytes = read(f, sendbuf, MAXLINE)) > 0) {
+        if ((sent_bytes = send(sockfd, sendbuf, (size_t) read_bytes, 0)) < read_bytes) {
+            perror("send error");
+            return -1;
+        }
+        sent += sent_bytes;
+        remain -= sent_bytes;
+        //printf("send = %d, remaining = %d \n",sent_bytes ,remain);
     }
-    write(sockfd, "ok\n", 3);
-    close(fd);
+    close(f);
+    //printf("Sent successfully\n");
     return 0;
 }
 
@@ -85,7 +92,7 @@ void downloadFile(char *recvline, int sockfd) {
                 }
                 //printf("recv completed!\n");
                 received_data += len;
-                printf("len = %d, received = %d\n", (int) len, received_data);
+                //printf("len = %d, received = %d\n", (int) len, received_data);
                 fwrite(recvline, sizeof(char), (size_t) len, recvFile);
                 fflush(recvFile);
 
@@ -170,7 +177,6 @@ void str_cli(FILE *fp, int sockfd) {
                 // put 1.pdf or put /home/1.pdf
                 char filename[128] = {0};
                 int lastslash = 3;
-
                 for (int j = 4; sendline[j] != '\n' && sendline[j] != '\000'; j++) {
                     //filename[j - 4] = sendline[j];
                     if (sendline[j] == '/') {
@@ -181,7 +187,7 @@ void str_cli(FILE *fp, int sockfd) {
                 for (int j = lastslash; sendline[j] != '\n' && sendline[j] != '\000'; j++) {
                     filename[j - lastslash] = sendline[j];
                 }
-                printf("filename = %s\n", filename);
+                //printf("filename = %s\n", filename);
                 uploadFile(filename, sockfd);
 
             } else {
