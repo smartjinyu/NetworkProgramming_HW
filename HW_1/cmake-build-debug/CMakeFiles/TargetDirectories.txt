@@ -1,4 +1,0 @@
-/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug/CMakeFiles/Client.dir
-/home/smartjinyu/CLionProjects/NetworkProgramming/HW_1/cmake-build-debug/CMakeFiles/Server.dir
