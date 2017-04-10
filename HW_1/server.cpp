@@ -125,7 +125,7 @@ int downloadFile(char *filename, int sockfd, int i) {
         }
         sent += sent_bytes;
         remain -= sent_bytes;
-        //printf("send = %d, remaining = %d \n",sent_bytes ,remain);
+        printf("send = %d, remaining = %d \n",sent_bytes ,remain);
     }
     close(f);
     printf("Sent successfully\n");

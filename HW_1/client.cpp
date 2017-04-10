@@ -92,11 +92,11 @@ void downloadFile(char *recvline, int sockfd) {
                 }
                 //printf("recv completed!\n");
                 received_data += len;
-                //printf("len = %d, received = %d\n", (int) len, received_data);
+                printf("len = %d, received = %d\n", (int) len, received_data);
                 fwrite(recvline, sizeof(char), (size_t) len, recvFile);
                 fflush(recvFile);
 
-                //printf("fwrite completed!\n");
+                printf("fwrite completed!\n");
                 if (received_data >= file_size) {
                     break;
                 }
