@@ -1,0 +1,4 @@
+/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_5/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_5/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_5/cmake-build-debug/CMakeFiles/Client.dir
+/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_5/cmake-build-debug/CMakeFiles/Server.dir

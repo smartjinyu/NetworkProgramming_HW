@@ -126,11 +126,13 @@ int downloadFile(char *filename, int sockfd, int i) {
         sent += sent_bytes;
         remain -= sent_bytes;
         printf("send = %d, remaining = %d \n",sent_bytes ,remain);
+        bzero(sendbuf,sizeof(sendbuf));
     }
     close(f);
     printf("Sent successfully\n");
     return 0;
 }
+
 
 
 int uploadFile(char *recvline, int sockfd, int i) {
