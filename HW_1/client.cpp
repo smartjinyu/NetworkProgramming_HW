@@ -40,20 +40,28 @@ int uploadFile(char *filename, int sockfd) {
     write(sockfd, header, strlen(header) + 1);
     int sent = 0, remain = (int) st.st_size;
     //printf("sending files... \n");
-    ssize_t read_bytes, sent_bytes;
     char sendbuf[MAXLINE] = {0};
-    while ((read_bytes = read(f, sendbuf, MAXLINE)) > 0) {
-        if ((sent_bytes = send(sockfd, sendbuf, (size_t) read_bytes, 0)) < read_bytes) {
-            perror("send error");
-            return -1;
+    off_t offset = 0;
+
+    if(read(sockfd,sendbuf,MAXLINE)!=0 && !strcmp(sendbuf,"confirm")) {
+        int remain_data = (int) st.st_size;
+        //printf("sending files... \n");
+        ssize_t len;
+        bzero(sendbuf,sizeof(sendbuf));
+        while ((len = sendfile(sockfd, f, &offset, MAXLINE)) > 0) {
+            remain_data -= len;
+            //printf("len = %d, remaining = %d\n",len,remain_data);
         }
-        sent += sent_bytes;
-        remain -= sent_bytes;
-        //printf("send = %d, remaining = %d \n",sent_bytes ,remain);
+        close(f);
+        printf("Sent successfully\n");
+        return 0;
+    }else{
+        close(f);
+        fputs(sendbuf,stdout);
+        printf("put errror\n");
+        return -1;
     }
-    close(f);
-    //printf("Sent successfully\n");
-    return 0;
+
 }
 
 void downloadFile(char *recvline, int sockfd) {
@@ -73,13 +81,8 @@ void downloadFile(char *recvline, int sockfd) {
     //printf("filename = %s, filesize = %d\n",filename,file_size);
     if (file_size != -1) {
         // file_size == 0 means something is wrong
-        if (remove(filename) != 0) {
-            //perror( "Error deleting file\n" );
-        } else {
-            //puts( "File successfully deleted\n" );
-        }
-        FILE *recvFile = NULL;
-        recvFile = fopen(filename, "w+");
+        FILE *recvFile = fopen(filename, "w+");
+        write(sockfd,"confirm",8);
         if (recvFile != NULL) {
             ssize_t len;
             bzero(recvline, sizeof(recvline));
@@ -92,16 +95,14 @@ void downloadFile(char *recvline, int sockfd) {
                 }
                 //printf("recv completed!\n");
                 received_data += len;
-                printf("len = %d, received = %d\n", (int) len, received_data);
+                //printf("len = %d, received = %d\n", (int) len, received_data);
                 fwrite(recvline, sizeof(char), (size_t) len, recvFile);
-                fflush(recvFile);
 
-                printf("fwrite completed!\n");
+                //printf("fwrite completed!\n");
                 if (received_data >= file_size) {
                     break;
                 }
                 bzero(recvline, sizeof(recvline));
-
             }
             printf("Download Complete!\n");
             fclose(recvFile);

@@ -68,36 +68,7 @@ int changeDir(char path[], int sockfd, int i) {
 }
 
 int downloadFile(char *filename, int sockfd, int i) {
-    /*
-    int fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        write(sockfd, "Failed to open file:", 20);
-        write(sockfd, strerror(errno), strlen(strerror(errno))+1);
-        fprintf(stderr, "Failed to open file %s: %s\n", filename, strerror(errno));
-        return -1;
-    }
-    struct stat stat_buf;// file size to be sent
-    fstat(fd, &stat_buf);
-    off_t offset = 0;
 
-
-    char header[256] = {0};
-    sprintf(header, "get:%s,%d", filename, (int) stat_buf.st_size);
-    write(sockfd, header, strlen(header)+1);
-
-    int remain_data = (int) stat_buf.st_size;
-    //printf("filesize = %d\n",remain_data);
-    ssize_t len;
-    while ((len = sendfile(sockfd, fd, &offset, stat_buf.st_size)) > 0) {
-        remain_data -= len;
-        //printf("len = %d, remaining = %d\n",len,remain_data);
-
-    }
-    //printf("last len = %d\n",len);
-    close(fd);
-    //printf("send successfully!\n");
-
-    */
     int f = open(filename, O_RDONLY);
     if (f < 0) {
         char header[256] = {0};
@@ -114,23 +85,28 @@ int downloadFile(char *filename, int sockfd, int i) {
     sprintf(header, "get:%s,%d", filename, (int) st.st_size);
     //printf("filesize = %d\n",(int)st.st_size);
     write(sockfd, header, strlen(header) + 1);
-    int sent = 0, remain = (int) st.st_size;
-    //printf("sending files... \n");
-    ssize_t read_bytes, sent_bytes;
     char sendbuf[MAXLINE] = {0};
-    while ((read_bytes = read(f, sendbuf, MAXLINE)) > 0) {
-        if ((sent_bytes = send(sockfd, sendbuf, (size_t) read_bytes, 0)) < read_bytes) {
-            perror("send error");
-            return -1;
-        }
-        sent += sent_bytes;
-        remain -= sent_bytes;
-        printf("send = %d, remaining = %d \n",sent_bytes ,remain);
+    off_t offset = 0;
+
+    if(read(sockfd,sendbuf,MAXLINE)!=0 && !strcmp(sendbuf,"confirm")){
+        int remain_data = (int) st.st_size;
+        //printf("sending files... \n");
+        ssize_t len;
         bzero(sendbuf,sizeof(sendbuf));
+        while ((len = sendfile(sockfd, f, &offset, MAXLINE)) > 0) {
+            remain_data -= len;
+            //printf("len = %d, remaining = %d\n",len,remain_data);
+        }
+        close(f);
+        printf("Sent successfully\n");
+        return 0;
+    }else{
+        close(f);
+        fputs(sendbuf,stdout);
+        printf("get errror\n");
+        return -1;
     }
-    close(f);
-    printf("Sent successfully\n");
-    return 0;
+
 }
 
 
@@ -154,14 +130,9 @@ int uploadFile(char *recvline, int sockfd, int i) {
     //printf("recvline = %s\n",recvline);
     //printf("filename = %s, filesize = %d\n",filename,file_size);
     if (file_size != -1) {
-        // file_size == 0 means something is wrong
-        if (remove(filename) != 0) {
-            //perror( "Error deleting file\n" );
-        } else {
-            //puts( "File successfully deleted\n" );
-        }
-        FILE *recvFile;
-        recvFile = fopen(filename, "w+");
+        // file_size == -1 means something is wrong
+        FILE *recvFile= fopen(filename, "w+");
+        write(sockfd,"confirm",8);
         if (recvFile != NULL) {
             ssize_t len;
             bzero(recvline, sizeof(recvline));
