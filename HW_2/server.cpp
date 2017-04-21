@@ -14,6 +14,7 @@
 #define MAXLINE 4096
 #define MAXCLIENTS 128
 #define LISTENQ 1024
+#define POSTSAVEFILE "posts"
 
 struct clientInfo {
     char username[256] = {0};
@@ -30,6 +31,16 @@ struct article {
         printf("Post:\n");
         printf("Client username = %s, ip address = %s, port = %d\n", username, ipAddr, port);
         printf("Content: %s\n", content);
+    }
+
+    void sendArticleToClient(int sockfd) {
+        write(sockfd, "Post:\n", 6);
+        char sendline[MAXLINE] = {0};
+        sprintf(sendline, "Client username = %s, ip address = %s, port = %d\n", username, ipAddr, port);
+        write(sockfd, sendline, strlen(sendline));
+        bzero(sendline, sizeof(sendline));
+        sprintf(sendline, "Content: %s\n", content);
+        write(sockfd, sendline, strlen(sendline));
     }
 };
 
@@ -136,7 +147,7 @@ int main(int argc, char **argv) {
                     continue;
                 }
 
-                fprintf(stdout, "Received from client: %s", recvline);
+                fprintf(stdout, "Received: %s", recvline);
                 if (clients[i].username[0] == 0) {
                     // username is not set
                     if (strncmp(recvline, "name:", 5) == 0) {
@@ -168,25 +179,42 @@ int main(int argc, char **argv) {
                     bzero(&curClientAddr, sizeof(curClientAddr));
                     socklen_t len = sizeof(curClientAddr);
                     getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
-                    article mArtcile;
-                    strcpy(mArtcile.username, clients[i].username);
-                    strcpy(mArtcile.ipAddr, inet_ntoa(curClientAddr.sin_addr));
-                    mArtcile.port = ntohs(curClientAddr.sin_port);
-                    strncpy(mArtcile.content, recvline + 5, strlen(recvline) - 6);
+                    article mArticle;
+                    strcpy(mArticle.username, clients[i].username);
+                    strcpy(mArticle.ipAddr, inet_ntoa(curClientAddr.sin_addr));
+                    mArticle.port = ntohs(curClientAddr.sin_port);
+                    strncpy(mArticle.content, recvline + 5, strlen(recvline) - 6);
 
-                    FILE *file = fopen("posts", "wb");
+                    FILE *file = fopen(POSTSAVEFILE, "a+b");
                     if (file != NULL) {
-                        fwrite(&mArtcile, sizeof(struct article), 1, file);
+                        fwrite(&mArticle, sizeof(struct article), 1, file);
                         fclose(file);
                         printf("New article posted:\n");
-                        mArtcile.printArticle();
+                        mArticle.printArticle();
                         write(sockfd, "Post new article successfully!\n", 31);
                     } else {
                         fprintf(stderr, "Failed to save new article to file, error = %s", strerror(errno));
                         write(sockfd, "Failed to post the article!\n", 28);
                     }
+                } else if (strncmp(recvline, "listposts", 9) == 0) {
+                    // list all the posts stored
+                    article mArticle;
+                    FILE *file = fopen(POSTSAVEFILE, "rb");
+                    if (file != NULL) {
+                        printf("Send all saved articles to client\n");
+                        write(sockfd, "List all saved articles\n", 24);
+
+                        while (fread(&mArticle, sizeof(struct article), 1, file) != 0) {
+                            mArticle.sendArticleToClient(sockfd);
+                        }
+                        fclose(file);
+                    } else {
+                        fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
+                        write(sockfd, "Failed to list the article!\n", 28);
+                    }
 
                 }
+
 
                 bzero(&recvline, sizeof(recvline));
 

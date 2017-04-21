@@ -18,6 +18,13 @@ int max(int a, int b) {
     return a > b ? a : b;
 }
 
+void showHelpMenu() {
+    printf("------------ Help Menu -------------\n");
+    printf("help: show help menu\n");
+    printf("post:<article content>: post a new article\n");
+    printf("listposts: list all the articles in the server: \n");
+    printf("------------ Help Menu -------------\n");
+}
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -43,10 +50,13 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
-    printf("Please input the client name: ");
-    fflush(stdout);
     FD_ZERO(&rset);
     stdineof = 0; // use for test readable, 0:connect
+
+    showHelpMenu();
+    printf("Please input the client name: ");
+    fflush(stdout);
+
 
     while (true) {
         if (stdineof == 0) {
@@ -86,13 +96,18 @@ int main(int argc, char **argv) {
             if (clientName[0] == 0) {
                 // clientName is not set
                 char sendline0[MAXLINE] = {0}; // actual sendline this time
-                strncpy(clientName,sendline,strlen(sendline)-1); // last character of sendline is \n
+                strncpy(clientName, sendline, strlen(sendline) - 1); // last character of sendline is \n
                 strcpy(sendline0, "name:");
                 strcat(sendline0, sendline);
                 write(sockfd, sendline0, strlen(sendline0));
 
             } else {
-                write(sockfd, sendline, strlen(sendline));
+                if (strncmp(sendline, "help", 4) == 0) {
+                    showHelpMenu();
+                } else {
+                    write(sockfd, sendline, strlen(sendline));
+                }
+
             }
 
             bzero(sendline, sizeof(sendline));
