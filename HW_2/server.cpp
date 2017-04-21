@@ -9,16 +9,26 @@
 #include <memory.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define MAXLINE 4096
+#define MAXCLIENTS 128
 #define LISTENQ 1024
+
+struct clientInfo {
+    char username[256] = {0};
+    int sockfd = -1;
+};
+
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 
 int main(int argc, char **argv) {
-    int listenfd, connectfd, sockfd, maxi, maxfd;
-    int nready, client[FD_SETSIZE];
+    int listenfd, connectfd, sockfd, maxClient, maxfd;
+    // maxClient is max index of connected client
+    int nready;
+    clientInfo clients[MAXCLIENTS];
     fd_set rset, allset;
     ssize_t n;
     char recvline[MAXLINE] = {0};
@@ -43,18 +53,22 @@ int main(int argc, char **argv) {
     // LISTENQ the max length of the backlog (= complete + incomplete request queue)
 
     maxfd = listenfd;
-    maxi = -1;
-    for (int i = 0; i < FD_SETSIZE; i++) {
-        client[i] = -1;
-    }
+    maxClient = -1;
     FD_ZERO(&allset);
     FD_SET(listenfd, &allset);
 
 
     while (true) {
         rset = allset;
-        nready = select(maxfd + 1, &rset, NULL, NULL, NULL);
-        // number of ready descriptors
+        if ((nready = select(maxfd + 1, &rset, NULL, NULL, NULL)) < 0) {
+            // number of ready descriptors
+
+            if (errno == EINTR) {
+                continue; // just ignore it
+            } else {
+                fprintf(stderr, "select error, error = %s\n", strerror(errno));
+            }
+        }
         if (FD_ISSET(listenfd, &rset)) {
             clientLen = sizeof(clientAddr);
             bzero(&clientAddr, sizeof(clientAddr));
@@ -64,9 +78,9 @@ int main(int argc, char **argv) {
             // new client connection
             int i;
             for (i = 0; i < FD_SETSIZE; i++) {
-                if (client[i] < 0) {
+                if (clients[i].sockfd < 0) {
                     // find the first available descriptor
-                    client[i] = connectfd;
+                    clients[i].sockfd = connectfd;
                     break;
                 }
             }
@@ -77,8 +91,8 @@ int main(int argc, char **argv) {
             if (connectfd > maxfd) {
                 maxfd = connectfd;
             }
-            if (i > maxi) {
-                maxi = i;
+            if (i > maxClient) {
+                maxClient = i;
             }
             if (--nready <= 0) {
                 continue;// no more readable descriptors
@@ -86,9 +100,9 @@ int main(int argc, char **argv) {
 
         }
 
-        for (int i = 0; i <= maxi; i++) {
+        for (int i = 0; i <= maxClient; i++) {
             // check all clients for data
-            if ((sockfd = client[i]) < 0) {
+            if ((sockfd = clients[i].sockfd) < 0) {
                 continue; // skip empty client
             }
             if (FD_ISSET(sockfd, &rset)) {
@@ -102,14 +116,36 @@ int main(int argc, char **argv) {
 
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
-                    client[i] = -1;
-
-                } else {
-                    fputs(recvline, stdout);
-                    write(sockfd,recvline,strlen(recvline));
-                    bzero(&recvline, sizeof(recvline));
-
+                    clients[i].sockfd = -1;
+                    continue;
                 }
+
+                fprintf(stdout, "Received from client: %s", recvline);
+                if (clients[i].username[0] == 0) {
+                    // username is not set
+                    if (strncmp(recvline, "name:", 5) == 0) {
+                        for (int j = 5; recvline[j] != '\n' && recvline[j] != 0; j++) {
+                            clients[i].username[j - 5] = recvline[j];
+                        }
+                        printf("client's username is %s\n", clients[i].username);
+                        write(sockfd, "Login successfully!\n", 20);
+                    } else {
+                        fputs("Username of the client not set, login failed!\n", stderr);
+                        write(sockfd, "Username not set, login failed!\n", 32);
+                        struct sockaddr_in terminatedAddr;
+                        socklen_t len = sizeof(terminatedAddr);
+                        getpeername(sockfd, (struct sockaddr *) &terminatedAddr, &len);
+                        printf("Client terminated, ip = %s, port = %d\n",
+                               inet_ntoa(terminatedAddr.sin_addr), ntohs(terminatedAddr.sin_port));
+                        close(sockfd);
+                        FD_CLR(sockfd, &allset);
+                        clients[i].sockfd = -1;
+                    }
+                }
+
+                bzero(&recvline, sizeof(recvline));
+
+                
                 if (--nready <= 0) {
                     break; // no more readable descriptors
                 }
@@ -117,9 +153,6 @@ int main(int argc, char **argv) {
             }
         }
     }
-
-
-
 
 
 }

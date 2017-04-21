@@ -8,8 +8,11 @@
 #include <memory.h>
 #include <cstdio>
 #include <unistd.h>
+#include <errno.h>
 
 #define MAXLINE 4096
+
+char clientName[256] = {0};
 
 int max(int a, int b) {
     return a > b ? a : b;
@@ -34,8 +37,14 @@ int main(int argc, char **argv) {
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons((uint16_t) atoi(argv[2]));// port
     inet_pton(AF_INET, argv[1], &serverAddr.sin_addr);
-    connect(sockfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
 
+    if (connect(sockfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) < 0) {
+        fprintf(stderr, "Connect to server failed, error = %s\n", strerror(errno));
+        exit(-1);
+    }
+
+    printf("Please input the client name: ");
+    fflush(stdout);
     FD_ZERO(&rset);
     stdineof = 0; // use for test readable, 0:connect
 
@@ -74,7 +83,17 @@ int main(int argc, char **argv) {
                 FD_CLR(fileno(stdin), &rset);
                 continue;
             }
-            write(sockfd, sendline, strlen(sendline));
+            if (clientName[0] == 0) {
+                // clientName is not set
+                char sendline0[MAXLINE] = {0}; // actual sendline this time
+                strcpy(sendline0, "name:");
+                strcat(sendline0, sendline);
+                write(sockfd, sendline0, strlen(sendline0));
+
+            } else {
+                write(sockfd, sendline, strlen(sendline));
+            }
+
             bzero(sendline, sizeof(sendline));
 
         }
