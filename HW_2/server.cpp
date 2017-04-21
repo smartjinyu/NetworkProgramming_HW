@@ -20,6 +20,19 @@ struct clientInfo {
     int sockfd = -1;
 };
 
+struct article {
+    char content[MAXLINE] = {0};
+    char username[256] = {0};
+    char ipAddr[256] = {0};
+    int port;
+
+    void printArticle() {
+        printf("Post:\n");
+        printf("Client username = %s, ip address = %s, port = %d\n", username, ipAddr, port);
+        printf("Content: %s\n", content);
+    }
+};
+
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -81,6 +94,7 @@ int main(int argc, char **argv) {
                 if (clients[i].sockfd < 0) {
                     // find the first available descriptor
                     clients[i].sockfd = connectfd;
+                    bzero(clients[i].username, sizeof(clients[i].username));
                     break;
                 }
             }
@@ -109,6 +123,7 @@ int main(int argc, char **argv) {
                 if ((n = read(sockfd, recvline, MAXLINE)) == 0) {
                     // connection closed by client
                     struct sockaddr_in terminatedAddr;
+                    bzero(&terminatedAddr, sizeof(terminatedAddr));
                     socklen_t len = sizeof(terminatedAddr);
                     getpeername(sockfd, (struct sockaddr *) &terminatedAddr, &len);
                     printf("Client terminated, ip = %s, port = %d\n",
@@ -117,6 +132,7 @@ int main(int argc, char **argv) {
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
                     clients[i].sockfd = -1;
+                    bzero(clients[i].username, sizeof(clients[i].username));
                     continue;
                 }
 
@@ -124,15 +140,16 @@ int main(int argc, char **argv) {
                 if (clients[i].username[0] == 0) {
                     // username is not set
                     if (strncmp(recvline, "name:", 5) == 0) {
-                        for (int j = 5; recvline[j] != '\n' && recvline[j] != 0; j++) {
-                            clients[i].username[j - 5] = recvline[j];
-                        }
+                        // set username
+                        strncpy(clients[i].username, recvline + 5, strlen(recvline) - 6);
+                        // last character of recvline is \n
                         printf("client's username is %s\n", clients[i].username);
                         write(sockfd, "Login successfully!\n", 20);
                     } else {
                         fputs("Username of the client not set, login failed!\n", stderr);
                         write(sockfd, "Username not set, login failed!\n", 32);
                         struct sockaddr_in terminatedAddr;
+                        bzero(&terminatedAddr, sizeof(terminatedAddr));
                         socklen_t len = sizeof(terminatedAddr);
                         getpeername(sockfd, (struct sockaddr *) &terminatedAddr, &len);
                         printf("Client terminated, ip = %s, port = %d\n",
@@ -140,12 +157,40 @@ int main(int argc, char **argv) {
                         close(sockfd);
                         FD_CLR(sockfd, &allset);
                         clients[i].sockfd = -1;
+                        bzero(clients[i].username, sizeof(clients[i].username));
                     }
+
+                }
+
+                if (strncmp(recvline, "post:", 5) == 0) {
+                    // post an article
+                    struct sockaddr_in curClientAddr;
+                    bzero(&curClientAddr, sizeof(curClientAddr));
+                    socklen_t len = sizeof(curClientAddr);
+                    getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
+                    article mArtcile;
+                    strcpy(mArtcile.username, clients[i].username);
+                    strcpy(mArtcile.ipAddr, inet_ntoa(curClientAddr.sin_addr));
+                    mArtcile.port = ntohs(curClientAddr.sin_port);
+                    strncpy(mArtcile.content, recvline + 5, strlen(recvline) - 6);
+
+                    FILE *file = fopen("posts", "wb");
+                    if (file != NULL) {
+                        fwrite(&mArtcile, sizeof(struct article), 1, file);
+                        fclose(file);
+                        printf("New article posted:\n");
+                        mArtcile.printArticle();
+                        write(sockfd, "Post new article successfully!\n", 31);
+                    } else {
+                        fprintf(stderr, "Failed to save new article to file, error = %s", strerror(errno));
+                        write(sockfd, "Failed to post the article!\n", 28);
+                    }
+
                 }
 
                 bzero(&recvline, sizeof(recvline));
 
-                
+
                 if (--nready <= 0) {
                     break; // no more readable descriptors
                 }

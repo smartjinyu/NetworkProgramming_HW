@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
             if (clientName[0] == 0) {
                 // clientName is not set
                 char sendline0[MAXLINE] = {0}; // actual sendline this time
+                strncpy(clientName,sendline,strlen(sendline)-1); // last character of sendline is \n
                 strcpy(sendline0, "name:");
                 strcat(sendline0, sendline);
                 write(sockfd, sendline0, strlen(sendline0));
