@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
     FD_ZERO(&allset);
     FD_SET(listenfd, &allset);
 
+
     while (true) {
         rset = allset;
         nready = select(maxfd + 1, &rset, NULL, NULL, NULL);
@@ -70,7 +71,7 @@ int main(int argc, char **argv) {
                 }
             }
             if (i == FD_SETSIZE) {
-                printf("Too many clients\n");
+                printf("too many clients\n");
             }
             FD_SET(connectfd, &allset);
             if (connectfd > maxfd) {
@@ -82,16 +83,15 @@ int main(int argc, char **argv) {
             if (--nready <= 0) {
                 continue;// no more readable descriptors
             }
-        }
 
+        }
 
         for (int i = 0; i <= maxi; i++) {
             // check all clients for data
-            if ((sockfd = client[i] < 0)) {
+            if ((sockfd = client[i]) < 0) {
                 continue; // skip empty client
             }
             if (FD_ISSET(sockfd, &rset)) {
-                bzero(&recvline, sizeof(recvline));
                 if ((n = read(sockfd, recvline, MAXLINE)) == 0) {
                     // connection closed by client
                     struct sockaddr_in terminatedAddr;
@@ -103,12 +103,11 @@ int main(int argc, char **argv) {
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
                     client[i] = -1;
+
                 } else {
                     fputs(recvline, stdout);
-
-                    //todo
-
-                    write(sockfd, recvline, (size_t) n);
+                    write(sockfd,recvline,strlen(recvline));
+                    bzero(&recvline, sizeof(recvline));
 
                 }
                 if (--nready <= 0) {
@@ -117,8 +116,10 @@ int main(int argc, char **argv) {
 
             }
         }
-
     }
+
+
+
 
 
 }

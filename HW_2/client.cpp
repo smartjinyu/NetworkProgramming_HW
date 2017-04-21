@@ -45,7 +45,9 @@ int main(int argc, char **argv) {
         }
         FD_SET(sockfd, &rset); // for socket
 
-        maxfdp1 = max(fileno(stdin),sockfd)+1;
+        maxfdp1 = max(fileno(stdin), sockfd) + 1;
+        select(maxfdp1, &rset, NULL, NULL, NULL);
+
         if (FD_ISSET(sockfd, &rset)) {
             // socket is readable
             if (recv(sockfd, recvline, MAXLINE, 0) == 0) {
@@ -71,7 +73,6 @@ int main(int argc, char **argv) {
                 printf("half closed\n");
                 FD_CLR(fileno(stdin), &rset);
                 continue;
-
             }
             write(sockfd, sendline, strlen(sendline));
             bzero(sendline, sizeof(sendline));
