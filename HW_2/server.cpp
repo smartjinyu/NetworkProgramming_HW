@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #define MAXLINE 4096
+#define LISTENQ 1024
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -20,7 +21,7 @@ int main(int argc, char **argv) {
     int nready, client[FD_SETSIZE];
     fd_set rset, allset;
     ssize_t n;
-    char recvline[MAXLINE];
+    char recvline[MAXLINE] = {0};
     struct sockaddr_in serverAddr, clientAddr;
     socklen_t clientLen;
 
@@ -36,6 +37,10 @@ int main(int argc, char **argv) {
     serverAddr.sin_port = htons((uint16_t) atoi(argv[1]));
 
     bind(listenfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
+    // monitor the request on the port
+
+    listen(listenfd, LISTENQ);
+    // LISTENQ the max length of the backlog (= complete + incomplete request queue)
 
     maxfd = listenfd;
     maxi = -1;
@@ -80,7 +85,7 @@ int main(int argc, char **argv) {
         }
 
 
-        for(int i=0;i<=maxi;i++) {
+        for (int i = 0; i <= maxi; i++) {
             // check all clients for data
             if ((sockfd = client[i] < 0)) {
                 continue; // skip empty client
@@ -98,12 +103,12 @@ int main(int argc, char **argv) {
                     close(sockfd);
                     FD_CLR(sockfd, &allset);
                     client[i] = -1;
-
                 } else {
                     fputs(recvline, stdout);
-                    fflush(stdout);
 
-                    //write(sockfd, recvline, (size_t) n);
+                    //todo
+
+                    write(sockfd, recvline, (size_t) n);
 
                 }
                 if (--nready <= 0) {
