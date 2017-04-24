@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
                     FILE *file = fopen(POSTSAVEFILE, "rb");
                     if (file != NULL) {
                         printf("Send all saved articles to client\n");
-                        write(sockfd, "List all saved articles\n", 24);
+                        //write(sockfd, "List all saved articles\n", 24);
 
                         while (fread(&mArticle, sizeof(struct article), 1, file) != 0) {
                             mArticle.sendArticleToClient(sockfd);
@@ -212,7 +212,22 @@ int main(int argc, char **argv) {
                         fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
                         write(sockfd, "Failed to list the article!\n", 28);
                     }
+                } else if (strncmp(recvline, "listclients", 11) == 0) {
+                    // list all the clients online
+                    int clientSocketfd;
+                    char sendline[256] = {0};
+                    for (int i = 0; i <= maxClient; i++) {
+                        if ((clientSocketfd = clients[i].sockfd) != -1 && clients[i].username[0] != 0) {
+                            struct sockaddr_in curClientAddr;
+                            bzero(&curClientAddr, sizeof(curClientAddr));
+                            socklen_t len = sizeof(curClientAddr);
+                            getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
+                            sprintf(sendline, "Client name = %s, ip = %s, port = %d\n", clients[i].username,
+                                    inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port));
+                            write(sockfd, sendline, strlen(sendline));
 
+                        }
+                    }
                 }
 
 
