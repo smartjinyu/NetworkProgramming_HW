@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/smartjinyu/CLionProjects/NetworkProgramming/NPpractice_6/server.cpp
+unistd.h
+-
+sys/param.h
+-
+netinet/in.h
+-
+wait.h
+-
+cstdio
+-
+memory.h
+-
+errno.h
+-
+cstdlib
+-
+arpa/inet.h
+-
+

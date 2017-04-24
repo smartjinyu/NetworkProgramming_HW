@@ -1,0 +1,1 @@
+/usr/bin/c++   -g   CMakeFiles/NPpractice_6.dir/main.cpp.o  -o NPpractice_6 
