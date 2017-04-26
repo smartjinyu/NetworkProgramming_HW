@@ -22,7 +22,8 @@ void showHelpMenu() {
     printf("------------ Help Menu -------------\n");
     printf("help: show help menu\n");
     printf("post:<article content>: post a new article\n");
-    printf("listposts: list all the articles in the server\n");
+    printf("listposts: list posts catalog in the server\n");
+    printf("readpost:i: read the post of index i in the server\n");
     printf("listclients: list all the clients online\n");
     printf("------------ Help Menu -------------\n");
 }

@@ -10,11 +10,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
+#include <vector>
 
 #define MAXLINE 4096
 #define MAXCLIENTS 128
 #define LISTENQ 1024
 #define POSTSAVEFILE "posts"
+
 
 struct clientInfo {
     char username[256] = {0};
@@ -44,6 +46,23 @@ struct article {
     }
 };
 
+std::vector<article> articles; // vector of articles posted till now
+
+void loadArticleFromDisk() {
+    // read articles from disk, call on start
+    article mArticle;
+    FILE *file = fopen(POSTSAVEFILE, "rb");
+    if (file != NULL) {
+
+        while (fread(&mArticle, sizeof(struct article), 1, file) != 0) {
+            articles.push_back(mArticle);
+        }
+        fclose(file);
+    } else {
+        fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
+    }
+
+}
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
@@ -58,17 +77,23 @@ int main(int argc, char **argv) {
     char recvline[MAXLINE] = {0};
     struct sockaddr_in serverAddr, clientAddr;
     socklen_t clientLen;
+    const int socketOpOn = 1;
+
 
     if (argc != 2) {
         fputs("Wrong arguments! Please run ./server.out <port> \n", stderr);
         exit(-1);
     }
 
+    loadArticleFromDisk();
+
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     bzero(&serverAddr, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serverAddr.sin_port = htons((uint16_t) atoi(argv[1]));
+
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
 
     bind(listenfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
     // monitor the request on the port
@@ -192,37 +217,52 @@ int main(int argc, char **argv) {
                         printf("New article posted:\n");
                         mArticle.printArticle();
                         write(sockfd, "Post new article successfully!\n", 31);
+                        articles.push_back(mArticle);
                     } else {
                         fprintf(stderr, "Failed to save new article to file, error = %s", strerror(errno));
                         write(sockfd, "Failed to post the article!\n", 28);
                     }
                 } else if (strncmp(recvline, "listposts", 9) == 0) {
                     // list all the posts stored
-                    article mArticle;
-                    FILE *file = fopen(POSTSAVEFILE, "rb");
-                    if (file != NULL) {
-                        printf("Send all saved articles to client\n");
-                        //write(sockfd, "List all saved articles\n", 24);
-
-                        while (fread(&mArticle, sizeof(struct article), 1, file) != 0) {
-                            mArticle.sendArticleToClient(sockfd);
-                        }
-                        fclose(file);
+                    if (articles.size() == 0) {
+                        write(sockfd, "No posts currently!\n", 20);
                     } else {
-                        fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
-                        write(sockfd, "Failed to list the article!\n", 28);
+                        char sendline[MAXLINE] = {0};
+                        sprintf(sendline, "Listing all the %ld posts catalog\n", articles.size());
+                        write(sockfd, sendline, strlen(sendline));
+                        bzero(sendline, sizeof(sendline));
+                        for (int j = 0; j < articles.size(); j++) {
+                            sprintf(sendline, "Post #%d\nClient username = %s, ip address = %s, port = %d\n", j,
+                                    articles[j].username, articles[j].ipAddr, articles[j].port);
+                            write(sockfd, sendline, strlen(sendline));
+                            bzero(sendline, sizeof(sendline));
+                        }
                     }
+
+                } else if (strncmp(recvline, "readpost:", 9) == 0) {
+                    char buff[256] = {0};
+                    strncpy(buff, recvline + 9, strlen(recvline) - 10);
+                    int index = atoi(buff);
+                    if (index >= articles.size()) {
+                        bzero(buff, sizeof(buff));
+                        sprintf(buff, "Wrong post index %d, max valid post index is %ld\n", index, articles.size() - 1);
+                        fprintf(stderr, buff);
+                        write(sockfd, buff, strlen(buff));
+                    } else {
+                        articles[index].sendArticleToClient(sockfd);
+                    }
+
                 } else if (strncmp(recvline, "listclients", 11) == 0) {
                     // list all the clients online
                     int clientSocketfd;
                     char sendline[256] = {0};
-                    for (int i = 0; i <= maxClient; i++) {
-                        if ((clientSocketfd = clients[i].sockfd) != -1 && clients[i].username[0] != 0) {
+                    for (int j = 0; j <= maxClient; j++) {
+                        if ((clientSocketfd = clients[j].sockfd) != -1 && clients[j].username[0] != 0) {
                             struct sockaddr_in curClientAddr;
                             bzero(&curClientAddr, sizeof(curClientAddr));
                             socklen_t len = sizeof(curClientAddr);
                             getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
-                            sprintf(sendline, "Client name = %s, ip = %s, port = %d\n", clients[i].username,
+                            sprintf(sendline, "Client name = %s, ip = %s, port = %d\n", clients[j].username,
                                     inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port));
                             write(sockfd, sendline, strlen(sendline));
 
@@ -241,8 +281,6 @@ int main(int argc, char **argv) {
             }
         }
     }
-
-
 }
 
 #pragma clang diagnostic pop
