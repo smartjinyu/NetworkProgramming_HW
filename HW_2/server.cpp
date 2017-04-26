@@ -268,6 +268,29 @@ int main(int argc, char **argv) {
 
                         }
                     }
+                } else if (strncmp(recvline, "broadcast:", 10) == 0) {
+                    char content[MAXLINE] = {0};
+                    sprintf(content, "Broadcast from client %s:", clients[i].username);
+                    strncat(content, recvline + 10, strlen(recvline) - 10);
+                    // keep \n
+                    int udpsockfd = socket(AF_INET, SOCK_DGRAM, 0);
+                    struct sockaddr_in udpaddr;
+                    struct sockaddr_in curClientAddr;
+                    socklen_t len = sizeof(curClientAddr);
+                    int clientSocketfd;
+                    for (int j = 0; j <= maxClient; j++) {
+                        if ((clientSocketfd = clients[j].sockfd) != -1 && clients[j].username[0] != 0) {
+                            bzero(&curClientAddr, sizeof(curClientAddr));
+                            getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
+                            bzero(&udpaddr, sizeof(udpaddr));
+                            udpaddr.sin_family = AF_INET;
+                            udpaddr.sin_port = curClientAddr.sin_port;
+                            udpaddr.sin_addr = curClientAddr.sin_addr;
+                            len = sizeof(udpaddr);
+                            sendto(udpsockfd, content, strlen(content), 0, (struct sockaddr *) &udpaddr, len);
+                        }
+                    }
+
                 }
 
 
