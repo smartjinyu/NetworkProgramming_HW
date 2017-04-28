@@ -26,6 +26,7 @@ void showHelpMenu() {
     printf("readpost:<i>: read the post of index i in the server\n");
     printf("listclients: list all the clients online\n");
     printf("broadcast:<content>: broadcast to all online clients\n");
+    printf("chatwith:<name>: chat with the client whose name is <name>\n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -88,12 +89,54 @@ int main(int argc, char **argv) {
                 if (stdineof == 1) {
                     return 0; // normal termination
                 } else {
-                    printf("Client: Server terminated prematurely");
-                    exit(-1);
+                    printf("Client: Server terminated prematurely\n");
+                    close(tcpfd);
+                    FD_CLR(tcpfd, &rset);
                 }
             }
-            fputs(recvline, stdout);
-            fflush(stdout);
+            if (strncmp("chatserver:", recvline, 11) == 0) {
+                // this client is chat client, connect to the chat server
+                char chatterName[256] = {0};
+                char chatterIp[256] = {0};
+                char chatterPort[256] = {0};
+                int j = 0, k = 0;
+                for (j = 11; recvline[j] != ','; j++) {
+                    chatterName[j - 11] = recvline[j];
+                }
+                j++;
+                for (k = j; recvline[k] != ','; k++) {
+                    chatterIp[k - j] = recvline[k];
+                }
+                k++;
+                for (int l = k; recvline[l] != '\n' && recvline[l] != 0; l++) {
+                    chatterPort[l - k] = recvline[l];
+                }
+                printf("Begin to chat with %s as client, server info: ip = %s, port= %d\n", chatterName, chatterIp,
+                       atoi(chatterPort));
+            } else if (strncmp("chatclient:", recvline, 11) == 0) {
+                // this client is chat server, here are client information
+                char chatterName[256] = {0};
+                char chatterIp[256] = {0};
+                char chatterPort[256] = {0};
+                int j = 0, k = 0;
+                for (j = 11; recvline[j] != ','; j++) {
+                    chatterName[j - 11] = recvline[j];
+                }
+                j++;
+                for (k = j; recvline[k] != ','; k++) {
+                    chatterIp[k - j] = recvline[k];
+                }
+                k++;
+                for (int l = k; recvline[l] != '\n' && recvline[l] != 0; l++) {
+                    chatterPort[l - k] = recvline[l];
+                }
+                printf("Begin to chat with %s as server, client info: ip = %s, port= %d\n", chatterName, chatterIp,
+                       atoi(chatterPort));
+            } else {
+                fputs(recvline, stdout);
+                fflush(stdout);
+
+            }
             bzero(recvline, sizeof(recvline));
         }
 

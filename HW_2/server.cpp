@@ -291,6 +291,43 @@ int main(int argc, char **argv) {
                         }
                     }
 
+                } else if (strncmp(recvline, "chatwith:", 9) == 0) {
+                    char name[256] = {0};
+                    char sendline[MAXLINE] = {0};
+                    strncpy(name, recvline + 9, strlen(recvline) - 10);
+                    int clientSocketfd = -1;
+                    struct sockaddr_in curClientAddr;
+                    bzero(&curClientAddr, sizeof(curClientAddr));
+                    socklen_t len = sizeof(curClientAddr);
+                    for (int j = 0; j <= maxClient; j++) {
+                        if ((clientSocketfd = clients[j].sockfd) != -1 && clients[j].username[0] != 0 &&
+                            strcmp(clients[j].username, name) == 0) {
+                            getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
+                            break;
+                        }
+                    }
+                    if (clientSocketfd == -1) {
+                        // not found a client with such name
+                        // todo chat with itself
+                        sprintf(sendline, "No such online client named %s found!\n", name);
+                        write(sockfd, sendline, strlen(sendline));
+                    } else {
+                        // we use the caller client as the server, the callee client as the client
+                        sprintf(sendline, "chatclient:%s,%s,%d\n", name,inet_ntoa(curClientAddr.sin_addr),
+                                ntohs(curClientAddr.sin_port));
+                        write(sockfd, sendline, strlen(sendline));
+                        // send chat client information to chat server
+                        
+                        bzero(sendline, sizeof(sendline));
+                        bzero(&curClientAddr, sizeof(curClientAddr));
+                        len = sizeof(curClientAddr);
+                        getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
+                        sprintf(sendline, "chatserver:%s,%s,%d\n", name,inet_ntoa(curClientAddr.sin_addr),
+                                ntohs(curClientAddr.sin_port));
+                        write(clientSocketfd, sendline, strlen(sendline));
+                        // send chat server information to chat client
+                    }
+
                 }
 
 
