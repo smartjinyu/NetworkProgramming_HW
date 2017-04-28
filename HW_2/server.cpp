@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
                    inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
             // new client connection
             int i;
-            for (i = 0; i < FD_SETSIZE; i++) {
+            for (i = 0; i < MAXCLIENTS; i++) {
                 if (clients[i].sockfd < 0) {
                     // find the first available descriptor
                     clients[i].sockfd = connectfd;
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
                     break;
                 }
             }
-            if (i == FD_SETSIZE) {
+            if (i == MAXCLIENTS) {
                 printf("too many clients\n");
             }
             FD_SET(connectfd, &allset);
@@ -172,15 +172,39 @@ int main(int argc, char **argv) {
                     continue;
                 }
 
-                fprintf(stdout, "Received: %s", recvline);
+                fprintf(stdout, "%s: %s", clients[i].username, recvline);
                 if (clients[i].username[0] == 0) {
                     // username is not set
                     if (strncmp(recvline, "name:", 5) == 0) {
                         // set username
-                        strncpy(clients[i].username, recvline + 5, strlen(recvline) - 6);
+                        char name[256] = {0};
+                        strncpy(name, recvline + 5, strlen(recvline) - 6);
+                        int j = 0;
+                        for (j = 0; j <= maxClient; j++) {
+                            if (strcmp(clients[j].username, name) == 0) {
+                                break;
+                            }
+                        }
+                        if (j == maxClient + 1) {
+                            // this name is not used
+                            strcpy(clients[i].username,name);
+                            printf("client's username is %s\n", clients[i].username);
+                            write(sockfd, "Login successfully!\n", 20);
+                        } else {
+                            fputs("Username is already used, login failed!\n", stderr);
+                            write(sockfd, "Username is already used, login failed!\n", 40);
+                            struct sockaddr_in terminatedAddr;
+                            bzero(&terminatedAddr, sizeof(terminatedAddr));
+                            socklen_t len = sizeof(terminatedAddr);
+                            getpeername(sockfd, (struct sockaddr *) &terminatedAddr, &len);
+                            printf("Client terminated, ip = %s, port = %d\n",
+                                   inet_ntoa(terminatedAddr.sin_addr), ntohs(terminatedAddr.sin_port));
+                            close(sockfd);
+                            FD_CLR(sockfd, &allset);
+                            clients[i].sockfd = -1;
+                            bzero(clients[i].username, sizeof(clients[i].username));
+                        }
                         // last character of recvline is \n
-                        printf("client's username is %s\n", clients[i].username);
-                        write(sockfd, "Login successfully!\n", 20);
                     } else {
                         fputs("Username of the client not set, login failed!\n", stderr);
                         write(sockfd, "Username not set, login failed!\n", 32);
@@ -219,7 +243,7 @@ int main(int argc, char **argv) {
                         write(sockfd, "Post new article successfully!\n", 31);
                         articles.push_back(mArticle);
                     } else {
-                        fprintf(stderr, "Failed to save new article to file, error = %s", strerror(errno));
+                        fprintf(stderr, "Failed to save new article to file, error = %s\n", strerror(errno));
                         write(sockfd, "Failed to post the article!\n", 28);
                     }
                 } else if (strncmp(recvline, "listposts", 9) == 0) {
@@ -300,29 +324,29 @@ int main(int argc, char **argv) {
                     bzero(&curClientAddr, sizeof(curClientAddr));
                     socklen_t len = sizeof(curClientAddr);
                     for (int j = 0; j <= maxClient; j++) {
-                        if ((clientSocketfd = clients[j].sockfd) != -1 && clients[j].username[0] != 0 &&
+                        if (clients[j].sockfd != -1 && clients[j].username[0] != 0 &&
                             strcmp(clients[j].username, name) == 0) {
+                            clientSocketfd = clients[j].sockfd;
                             getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
                             break;
                         }
                     }
                     if (clientSocketfd == -1) {
                         // not found a client with such name
-                        // todo chat with itself
                         sprintf(sendline, "No such online client named %s found!\n", name);
                         write(sockfd, sendline, strlen(sendline));
                     } else {
                         // we use the caller client as the server, the callee client as the client
-                        sprintf(sendline, "chatclient:%s,%s,%d\n", name,inet_ntoa(curClientAddr.sin_addr),
+                        sprintf(sendline, "chatclient:%s,%s,%d\n", name, inet_ntoa(curClientAddr.sin_addr),
                                 ntohs(curClientAddr.sin_port));
                         write(sockfd, sendline, strlen(sendline));
                         // send chat client information to chat server
-                        
+
                         bzero(sendline, sizeof(sendline));
                         bzero(&curClientAddr, sizeof(curClientAddr));
                         len = sizeof(curClientAddr);
                         getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
-                        sprintf(sendline, "chatserver:%s,%s,%d\n", name,inet_ntoa(curClientAddr.sin_addr),
+                        sprintf(sendline, "chatserver:%s,%s,%d\n", name, inet_ntoa(curClientAddr.sin_addr),
                                 ntohs(curClientAddr.sin_port));
                         write(clientSocketfd, sendline, strlen(sendline));
                         // send chat server information to chat client
