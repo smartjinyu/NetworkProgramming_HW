@@ -36,7 +36,8 @@ void showHelpMenu() {
     printf("broadcast:<content>: broadcast to all online clients\n");
     printf("chatwith:<name>: chat with the client whose name is <name>\n");
     printf("chatserver: chat with server\n");
-
+    printf("listchats: list chatters with this client \n");
+    printf("endchat: end current chat \n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -177,8 +178,6 @@ int main(int argc, char **argv) {
                 curChatter = -2;
                 maxfdp1 = max(maxfdp1, CSclientfd);
 
-                //todo
-
 
             } else if (strncmp("chatclient:", recvline, 11) == 0) {
                 // this client is chat server, here are client information
@@ -201,7 +200,7 @@ int main(int argc, char **argv) {
                        atoi(chatterPort));
 
             } else {
-                fputs(recvline, stdout);
+                fprintf(stdout, "%s", recvline);
                 fflush(stdout);
             }
             bzero(recvline, sizeof(recvline));
@@ -240,7 +239,6 @@ int main(int argc, char **argv) {
                 // clientName is not set
                 char sendline0[MAXLINE] = {0}; // actual sendline this time
                 strncpy(clientName, sendline, strlen(sendline) - 1); // last character of sendline is \n
-                // todo
                 strcpy(sendline0, "name:");
                 strcat(sendline0, sendline);
                 write(sockfd, sendline0, strlen(sendline0));
@@ -250,6 +248,64 @@ int main(int argc, char **argv) {
             } else if (strncmp(sendline, "chatserver", 10) == 0) {
                 printf("switch back to chat with server\n");
                 curChatter = -1;
+            } else if (strncmp(sendline, "listchats", 9) == 0) {
+                // list current chatters
+                if (curChatter == -1) {
+                    printf("chat with server now\n");
+                } else if (curChatter == -2) {
+                    printf("chat with %s as chat client now\n", chatclientName);
+                } else {
+                    printf("chat with %s as chat server now\n", CSclients[curChatter].username);
+                }
+                printf("List all chatters:\n");
+                if (FD_ISSET(tcpfd, &allset)) {
+                    printf("server\n");
+                }
+                if (CSclientfd != -1) {
+                    printf("%s\n", chatclientName);
+                }
+                for (int i = 0; i <= maxCSclient; i++) {
+                    if (CSclients[i].sockfd != -1) {
+                        printf("%s\n", CSclients[i].username);
+                    }
+                }
+            } else if (strncmp(sendline, "endchat", 7) == 0) {
+                // end current chat
+                if (curChatter == -2) {
+                    // chat as client
+                    close(CSclientfd);
+                    FD_CLR(CSclientfd, &allset);
+                    CSclientfd = -1;
+                    curChatter = -1; //communicate with server
+                    printf("chat with %s ended, switch back to chat with server\n", chatclientName);
+                    bzero(chatclientName, sizeof(chatclientName));
+                } else if (curChatter == -1) {
+                    close(tcpfd);
+                    FD_CLR(tcpfd, &allset);
+                    if (CSclientfd != -1) {
+                        curChatter = -2;
+                        printf("chat with server ended, switch back to chat with %s\n", chatclientName);
+                    } else {
+                        for (int i = 0; i <= maxCSclient; i++) {
+                            if (CSclients[i].sockfd != -1) {
+                                curChatter = i;
+                                printf("chat with server ended, switch back to chat with %s\n", CSclients[i].username);
+                                break;
+                            }
+                        }
+                    }
+                    if (curChatter == -1) {
+                        printf("No connection now, client exit\n");
+                        exit(0);
+                    }
+                } else {
+                    close(CSclients[curChatter].sockfd);
+                    FD_CLR(CSclients[curChatter].sockfd, &allset);
+                    CSclients[curChatter].sockfd = -1;
+                    printf("chat with %s ended, switch back to chat with server\n", CSclients[curChatter].username);
+                    bzero(CSclients[curChatter].username, sizeof(CSclients[curChatter].username));
+                    curChatter = -1;
+                }
             } else if (strncmp(sendline, "chatwith:", 9) == 0) {
                 char name[256] = {0};
                 strncpy(name, sendline + 9, strlen(sendline) - 10);
@@ -270,20 +326,19 @@ int main(int argc, char **argv) {
                         write(tcpfd, sendline, strlen(sendline));
                     } else {
                         if (i == -1) {
-                            printf("switch back to chat with %s as client\n",name);
+                            printf("switch back to chat with %s as client\n", name);
                             curChatter = -2;
                         } else {
-                            printf("switch back to chat with %s as server\n",name);
+                            printf("switch back to chat with %s as server\n", name);
                             curChatter = i;
                         }
                     }
                 }
-            
+
             } else {
                 // printf("curChatter = %d\n", curChatter);
                 write(sockfd, sendline, strlen(sendline));
             }
-
 
             bzero(sendline, sizeof(sendline));
         }
@@ -303,7 +358,7 @@ int main(int argc, char **argv) {
             sprintf(sendline, "name:%s", clientName);
             write(CSconnectfd, sendline, sizeof(sendline));
             bzero(sendline, sizeof(sendline));
-            
+
             // new client connection
             int i;
             for (i = 0; i < MAXCLIENTS; i++) {
