@@ -59,7 +59,7 @@ void loadArticleFromDisk() {
         }
         fclose(file);
     } else {
-        fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
+        //fprintf(stderr, "Failed to open the file to read articles, error = %s", strerror(errno));
     }
 
 }
@@ -270,7 +270,7 @@ int main(int argc, char **argv) {
                     if (index >= articles.size()) {
                         bzero(buff, sizeof(buff));
                         sprintf(buff, "Wrong post index %d, max valid post index is %ld\n", index, articles.size() - 1);
-                        fprintf(stderr, buff);
+                        fputs(buff,stderr);
                         write(sockfd, buff, strlen(buff));
                     } else {
                         articles[index].sendArticleToClient(sockfd);
@@ -345,8 +345,8 @@ int main(int argc, char **argv) {
                         bzero(sendline, sizeof(sendline));
                         bzero(&curClientAddr, sizeof(curClientAddr));
                         len = sizeof(curClientAddr);
-                        getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
-                        sprintf(sendline, "chatserver:%s,%s,%d\n", name, inet_ntoa(curClientAddr.sin_addr),
+                        getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len); // get chat server itself's information
+                        sprintf(sendline, "chatserver:%s,%s,%d\n", clients[i].username , inet_ntoa(curClientAddr.sin_addr),
                                 ntohs(curClientAddr.sin_port));
                         write(clientSocketfd, sendline, strlen(sendline));
                         // send chat server information to chat client

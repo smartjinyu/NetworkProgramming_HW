@@ -84,10 +84,6 @@ int main(int argc, char **argv) {
     }
 
 
-    showHelpMenu();
-    printf("Please input the client name: ");
-    fflush(stdout);
-
     // for UDP socket
     bzero(&serverAddr, sizeof(serverAddr));
     socklen_t len = sizeof(serverAddr);
@@ -116,6 +112,11 @@ int main(int argc, char **argv) {
 
     stdineof = 0; // use for test readable, 0:connect
     maxfdp1 = max(max(CSlistenfd, fileno(stdin)), max(tcpfd, udpfd));
+
+    showHelpMenu();
+    printf("Please input the client name: ");
+    fflush(stdout);
+
 
     while (true) {
         rset = allset;
