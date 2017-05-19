@@ -1,2 +1,2 @@
 Options: 
-CMake: 3.7.1@/home/smartjinyu/Downloads/clion-2016.3.3/bin/cmake/bin/cmake
+CMake: 3.7.2@/home/smartjinyu/Downloads/clion-2016.3.3/bin/cmake/bin/cmake
