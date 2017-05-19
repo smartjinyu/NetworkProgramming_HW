@@ -12,9 +12,12 @@
 #include <unistd.h>
 
 #define MAXLINE 4096
+#define MAXNAMELEN 256
 
 static int sockfd; /* global for both threads to access */
 static FILE *fp;
+
+char clientName[MAXNAMELEN] = {0};
 
 void *copyto(void *);
 
@@ -32,6 +35,11 @@ void str_cli(FILE *fp_arg, int sockfd_arg) {
     }
 }
 
+void showHelpMenu() {
+    printf("------------ Help Menu -------------\n");
+    printf("help: show help menu\n");
+    printf("------------ Help Menu -------------\n");
+}
 
 int main(int argc, char **argv) {
     int sockfd;
@@ -55,6 +63,9 @@ int main(int argc, char **argv) {
     if (connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0) {
         fprintf(stderr, "Connect failed, error message = %s\n", strerror(errno));
     }
+    showHelpMenu();
+    printf("Please input the client name: ");
+    fflush(stdout);
     str_cli(stdin, sockfd);
     return 0;
 }
@@ -63,7 +74,18 @@ void *copyto(void *arg) {
     char sendline[MAXLINE] = {0};
 
     while (fgets(sendline, MAXLINE, fp) != NULL) {
-        write(sockfd, sendline, strlen(sendline));
+        if (clientName[0] == 0) {
+            // name unset
+            strncpy(clientName, sendline, strlen(sendline) - 1); // last character is \n
+            bzero(sendline, sizeof(sendline));
+            strcpy(sendline, "name:");
+            strcat(sendline, clientName);
+            strcat(sendline, "\n");
+            write(sockfd, sendline, strlen(sendline));
+        }
+        if (strncmp(sendline, "help", 4) == 0) {
+            showHelpMenu();
+        }
         bzero(sendline, sizeof(sendline));
     }
     return (NULL);
