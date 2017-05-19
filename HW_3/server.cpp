@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <vector>
 #include <string>
+#include <dirent.h>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
@@ -26,11 +27,33 @@ struct clientInfo {
 };
 
 clientInfo clients[MAXCLIENTS];
+std::vector<std::string> serverFiles;
 
 void setReUseAddr(int sockfd) {
     int flag = 1;
     socklen_t optlen = sizeof(flag);
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag, optlen);
+}
+
+void listfiles() {
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(".")) != NULL) {
+        /* print all the files and directories within directory */
+        serverFiles.clear();
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_type == DT_REG) {
+                // regular file
+                serverFiles.push_back(ent->d_name);
+            }
+        }
+        closedir(dir);
+    } else {
+        /* could not open directory */
+        perror("");
+        return;
+    }
+
 }
 
 void showClientTerminatedInfo(int sockfd) {
@@ -132,21 +155,31 @@ void str_echo(int sockfd, int index) {
             strncpy(buff, recvline + 10, strlen(recvline) - 11); // eliminate \n
             int i = atoi(buff);
             char sendline[MAXLINE] = {0};
-
-            if (0 <= i < MAXCLIENTS && clients[i].sockfd != -1) {
-                sprintf(sendline, "Listing files in client %s\n", clients[i].username);
+            if (i == -1) {
+                sprintf(sendline, "Listing files in server\n");
                 write(sockfd, sendline, strlen(sendline));
-                for (int j = 0; j < clients[i].filenames.size(); j++) {
+                for (int j = 0; j < serverFiles.size(); j++) {
                     bzero(sendline, sizeof(sendline));
-                    strcpy(sendline, clients[i].filenames[j].c_str());
+                    strcpy(sendline, serverFiles[j].c_str());
                     strcat(sendline, "\n");
                     write(sockfd, sendline, strlen(sendline));
                 }
             } else {
-                sprintf(sendline, "The client index %d is not valid!\n", i);
-                fprintf(stderr, sendline);
-                write(sockfd, sendline, strlen(sendline));
+                if (0 <= i < MAXCLIENTS && clients[i].sockfd != -1) {
+                    sprintf(sendline, "Listing files in client %s\n", clients[i].username);
+                    write(sockfd, sendline, strlen(sendline));
+                    for (int j = 0; j < clients[i].filenames.size(); j++) {
+                        bzero(sendline, sizeof(sendline));
+                        strcpy(sendline, clients[i].filenames[j].c_str());
+                        strcat(sendline, "\n");
+                        write(sockfd, sendline, strlen(sendline));
+                    }
+                } else {
+                    sprintf(sendline, "The client index %d is not valid!\n", i);
+                    fprintf(stderr, sendline);
+                    write(sockfd, sendline, strlen(sendline));
 
+                }
             }
         }
 
@@ -185,6 +218,7 @@ int main(int argc, char **argv) {
 
     bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
     listen(listenfd, LISTENQ);
+    listfiles();
 
     for (;;) {
         bzero(&clientaddr, sizeof(clientaddr));

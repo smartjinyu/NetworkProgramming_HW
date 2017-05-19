@@ -65,7 +65,7 @@ void showHelpMenu() {
     printf("------------ Help Menu -------------\n");
     printf("help: show help menu\n");
     printf("listclients: list all the clients online\n");
-    printf("listfiles:<index> list files of clients of index\n");
+    printf("listfiles:<index> list files of clients of index (-1 on the server)\n");
     printf("------------ Help Menu -------------\n");
 }
 
