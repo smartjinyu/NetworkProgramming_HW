@@ -23,30 +23,28 @@ void setReUseAddr(int sockfd) {
 
 void *doit(void *);
 
-void str_echo(int sockfd){
+void str_echo(int sockfd) {
     ssize_t n;
     char buf[MAXLINE];
     again:
-    while((n=read(sockfd,buf,MAXLINE))>0){
-        write(sockfd,buf,n);
+    while ((n = read(sockfd, buf, MAXLINE)) > 0) {
+        write(sockfd, buf, n);
     }
-    if(n<0 && errno == EINTR){
+    if (n < 0 && errno == EINTR) {
         goto again; // ignore EINTR
-    }else if(n<0){
+    } else if (n < 0) {
         printf("str_echo:read error");
     }
 }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
-#pragma clang diagnostic pop
-
 
 int main(int argc, char **argv) {
-    int listenfd, connfd,*iptr;
+    int listenfd, *iptr;
     pthread_t tid;
     socklen_t clientAddrLen;
-    struct sockaddr_in servaddr,clientaddr;
+    struct sockaddr_in servaddr, clientaddr;
 
 
     if (argc != 2) {
@@ -61,22 +59,23 @@ int main(int argc, char **argv) {
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons((uint16_t) atoi(argv[1]));
 
-    bind(listenfd,(struct sockaddr*)&servaddr,sizeof(servaddr));
-    listen(listenfd,LISTENQ);
+    bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+    listen(listenfd, LISTENQ);
 
-    for(;;){
-        bzero(&clientaddr,sizeof(clientaddr));
+    for (;;) {
+        bzero(&clientaddr, sizeof(clientaddr));
         clientAddrLen = sizeof(clientaddr);
-        iptr = (int *)malloc(sizeof(int)); /* for each thread */
-        *iptr = accept(listenfd,(struct sockaddr *)&clientaddr,&clientAddrLen);
+        iptr = (int *) malloc(sizeof(int)); /* for each thread */
+        *iptr = accept(listenfd, (struct sockaddr *) &clientaddr, &clientAddrLen);
 
-        pthread_create(&tid,NULL,&doit,iptr); /* pass by value*/
+        pthread_create(&tid, NULL, &doit, iptr); /* pass by value*/
     }
 }
+#pragma clang diagnostic pop
 
-void *doit(void *arg){
+void *doit(void *arg) {
     int connfd;
-    connfd=*((int*)arg);
+    connfd = *((int *) arg);
     free(arg);
     pthread_detach(pthread_self());
     str_echo(connfd);
