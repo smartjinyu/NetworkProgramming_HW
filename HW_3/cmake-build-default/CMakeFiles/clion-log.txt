@@ -1,4 +1,0 @@
-/home/smartjinyu/Downloads/clion-2016.3.3/bin/cmake/bin/cmake -DCMAKE_BUILD_TYPE= -G "CodeBlocks - Unix Makefiles" /home/smartjinyu/CLionProjects/NetworkProgramming/HW_3
--- Configuring done
--- Generating done
--- Build files have been written to: /home/smartjinyu/CLionProjects/NetworkProgramming/HW_3/cmake-build-default

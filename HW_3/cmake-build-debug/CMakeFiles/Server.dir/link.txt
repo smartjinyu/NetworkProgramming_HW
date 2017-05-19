@@ -1,1 +1,1 @@
-/usr/bin/c++   -g   CMakeFiles/Server.dir/server.cpp.o  -o Server 
+/usr/bin/c++    -std=c++11 -pthread -g   CMakeFiles/Server.dir/server.cpp.o  -o Server 
