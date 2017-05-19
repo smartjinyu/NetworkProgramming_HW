@@ -38,6 +38,7 @@ void str_cli(FILE *fp_arg, int sockfd_arg) {
 void showHelpMenu() {
     printf("------------ Help Menu -------------\n");
     printf("help: show help menu\n");
+    printf("listclients: list all the clients online\n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -81,12 +82,14 @@ void *copyto(void *arg) {
             strcpy(sendline, "name:");
             strcat(sendline, clientName);
             strcat(sendline, "\n");
-            write(sockfd, sendline, strlen(sendline));
         }
         if (strncmp(sendline, "help", 4) == 0) {
             showHelpMenu();
+            continue;
         }
+        write(sockfd, sendline, strlen(sendline));
         bzero(sendline, sizeof(sendline));
+
     }
     return (NULL);
 }
