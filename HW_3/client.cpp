@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #define MAXLINE 4096
 #define MAXNAMELEN 256
@@ -20,6 +21,31 @@ static FILE *fp;
 char clientName[MAXNAMELEN] = {0};
 
 void *copyto(void *);
+
+void listfiles(int sockfd) {
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(".")) != NULL) {
+        /* print all the files and directories within directory */
+        char sendline[MAXLINE] = {0};
+        strcpy(sendline, "listMyfiles:<");
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_type == DT_REG) {
+                // regular file
+                strcat(sendline, ent->d_name);
+                strcat(sendline, ",");
+            }
+        }
+        sendline[strlen(sendline) - 1] = '>';
+        write(sockfd, sendline, strlen(sendline));
+        closedir(dir);
+    } else {
+        /* could not open directory */
+        perror("");
+        return;
+    }
+
+}
 
 void str_cli(FILE *fp_arg, int sockfd_arg) {
     char recvline[MAXLINE] = {0};
@@ -39,6 +65,7 @@ void showHelpMenu() {
     printf("------------ Help Menu -------------\n");
     printf("help: show help menu\n");
     printf("listclients: list all the clients online\n");
+    printf("listfiles:<index> list files of clients of index\n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -67,6 +94,7 @@ int main(int argc, char **argv) {
     showHelpMenu();
     printf("Please input the client name: ");
     fflush(stdout);
+    listfiles(sockfd);
     str_cli(stdin, sockfd);
     return 0;
 }

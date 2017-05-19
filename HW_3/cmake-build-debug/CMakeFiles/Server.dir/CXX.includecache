@@ -25,4 +25,8 @@ errno.h
 -
 arpa/inet.h
 -
+vector
+-
+string
+-
 

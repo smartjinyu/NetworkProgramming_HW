@@ -11,6 +11,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <vector>
+#include <string>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
@@ -20,6 +22,7 @@
 struct clientInfo {
     char username[MAXNAMELEN] = {0};
     int sockfd = -1;
+    std::vector<std::string> filenames;
 };
 
 clientInfo clients[MAXCLIENTS];
@@ -47,6 +50,35 @@ void str_echo(int sockfd, int index) {
     again:
     while ((n = read(sockfd, recvline, MAXLINE)) > 0) {
         fputs(recvline, stdout);
+        if (strncmp(recvline, "listMyfiles:<", 13) == 0) {
+            // get file info in client
+            printf("\n");
+            char buff[MAXLINE] = {0};
+            strncpy(buff, recvline, strlen(recvline));
+            while (recvline[strlen(recvline) - 1] != '>') {
+                bzero(recvline, sizeof(recvline));
+                read(sockfd, recvline, MAXLINE);
+                strncat(buff, recvline, strlen(recvline));
+            }
+            // ensure the data is complete
+            int i = 12; // 10 is the character <, i means the previous ','
+            int j = 12; // j means the current ','
+            char name[MAXNAMELEN] = {0};
+            clients[index].filenames.clear();
+            for (int k = 12; buff[k] != '>'; k++) {
+                if (buff[k] == ',') {
+                    i = j;
+                    j = k;
+                    strncpy(name, buff + i + 1, (size_t) (j - i - 1));
+                    clients[index].filenames.push_back(name);
+                    bzero(name, sizeof(name));
+                }
+            }
+            bzero(recvline, sizeof(recvline));
+            continue;
+        }
+
+
         if (clients[index].username[0] == 0) {
             if (strncmp(recvline, "name:", 5) == 0) {
                 // set username
@@ -86,16 +118,41 @@ void str_echo(int sockfd, int index) {
                     bzero(&curClientAddr, sizeof(curClientAddr));
                     socklen_t len = sizeof(curClientAddr);
                     getpeername(clientSocketfd, (struct sockaddr *) &curClientAddr, &len);
-                    sprintf(sendline, "Client name = %s, ip = %s, port = %d\n", clients[j].username,
+                    sprintf(sendline, "Client index = %d,name = %s, ip = %s, port = %d\n", j, clients[j].username,
                             inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port));
                     write(sockfd, sendline, strlen(sendline));
                     bzero(sendline, sizeof(sendline));
                 }
             }
-
         }
+
+        if (strncmp(recvline, "listfiles:", 10) == 0) {
+            // list files of the client
+            char buff[MAXNAMELEN] = {0};
+            strncpy(buff, recvline + 10, strlen(recvline) - 11); // eliminate \n
+            int i = atoi(buff);
+            char sendline[MAXLINE] = {0};
+
+            if (0 <= i < MAXCLIENTS && clients[i].sockfd != -1) {
+                sprintf(sendline, "Listing files in client %s\n", clients[i].username);
+                write(sockfd, sendline, strlen(sendline));
+                for (int j = 0; j < clients[i].filenames.size(); j++) {
+                    bzero(sendline, sizeof(sendline));
+                    strcpy(sendline, clients[i].filenames[j].c_str());
+                    strcat(sendline, "\n");
+                    write(sockfd, sendline, strlen(sendline));
+                }
+            } else {
+                sprintf(sendline, "The client index %d is not valid!\n", i);
+                fprintf(stderr, sendline);
+                write(sockfd, sendline, strlen(sendline));
+
+            }
+        }
+
         bzero(recvline, sizeof(recvline));
     }
+
     if (n < 0 && errno == EINTR) {
         goto again; // ignore EINTR
     } else if (n < 0) {
@@ -164,6 +221,7 @@ void *doit(void *arg) {
     showClientTerminatedInfo(clients[index].sockfd);
     clients[index].sockfd = -1;
     bzero(clients[index].username, sizeof(clients[index].username));
+    clients[index].filenames.clear();
     close(connfd);
     return (NULL);
 }
