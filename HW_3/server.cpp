@@ -14,25 +14,37 @@
 #include <vector>
 #include <string>
 #include <dirent.h>
+#include <sys/stat.h>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
 #define MAXCLIENTS 128
 #define MAXNAMELEN 256
 
+struct file_info {
+    char fileName[MAXNAMELEN] = {0};
+    long fileSize = -1;
+};
+
 struct clientInfo {
     char username[MAXNAMELEN] = {0};
     int sockfd = -1;
-    std::vector<std::string> filenames;
+    std::vector<file_info> files;
 };
 
 clientInfo clients[MAXCLIENTS];
-std::vector<std::string> serverFiles;
+std::vector<file_info> serverFiles;
 
 void setReUseAddr(int sockfd) {
     int flag = 1;
     socklen_t optlen = sizeof(flag);
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag, optlen);
+}
+
+long getFileSize(char* fileName){
+    struct stat st;
+    stat(fileName, &st);
+    return st.st_size;
 }
 
 void listfiles() {
@@ -44,7 +56,10 @@ void listfiles() {
         while ((ent = readdir(dir)) != NULL) {
             if (ent->d_type == DT_REG) {
                 // regular file
-                serverFiles.push_back(ent->d_name);
+                file_info file;
+                strcpy(file.fileName,ent->d_name);
+                file.fileSize = getFileSize(ent->d_name);
+                serverFiles.push_back(file);
             }
         }
         closedir(dir);
@@ -85,17 +100,22 @@ void str_echo(int index) {
                 strncat(buff, recvline, strlen(recvline));
             }
             // ensure the data is complete
-            int i = 12; // 10 is the character <, i means the previous ','
-            int j = 12; // j means the current ','
-            char name[MAXNAMELEN] = {0};
-            clients[index].filenames.clear();
+            int i; // 10 is the character <, i means the previous ';'
+            int j = 12; // j means the current ';'
+            clients[index].files.clear();
+            char sizeBuf[256] = {0};
             for (int k = 12; buff[k] != '>'; k++) {
-                if (buff[k] == ',') {
+                if (buff[k] == ';') {
+                    file_info mFile;
                     i = j;
                     j = k;
-                    strncpy(name, buff + i + 1, (size_t) (j - i - 1));
-                    clients[index].filenames.push_back(name);
-                    bzero(name, sizeof(name));
+                    int t;
+                    for (t = i; buff[t] != ',' && t <= j; t++);// t is the position of ,
+                    strncpy(mFile.fileName, buff + i + 1, (size_t) (t - i - 1));
+                    bzero(sizeBuf, sizeof(sizeBuf));
+                    strncpy(sizeBuf, buff + t + 1, (size_t) (j - t - 1));
+                    mFile.fileSize = atol(sizeBuf);
+                    clients[index].files.push_back(mFile);
                 }
             }
             bzero(recvline, sizeof(recvline));
@@ -159,25 +179,38 @@ void str_echo(int index) {
             if (i == -1) {
                 sprintf(sendline, "Listing files in server\n");
                 write(sockfd, sendline, strlen(sendline));
+                char sizeBuf[256] = {0};
                 for (int j = 0; j < serverFiles.size(); j++) {
                     bzero(sendline, sizeof(sendline));
-                    strcpy(sendline, serverFiles[j].c_str());
+                    bzero(sizeBuf,sizeof(sizeBuf));
+                    strcpy(sendline,"filename:");
+                    strcat(sendline, serverFiles[j].fileName);
+                    strcat(sendline,",size:");
+                    sprintf(sizeBuf,"%ld",serverFiles[j].fileSize);
+                    strncat(sendline,sizeBuf,strlen(sizeBuf));
                     strcat(sendline, "\n");
                     write(sockfd, sendline, strlen(sendline));
+
                 }
             } else {
                 if (0 <= i < MAXCLIENTS && clients[i].sockfd != -1) {
                     sprintf(sendline, "Listing files in client %s\n", clients[i].username);
                     write(sockfd, sendline, strlen(sendline));
-                    for (int j = 0; j < clients[i].filenames.size(); j++) {
+                    char sizeBuf[256] = {0};
+                    for (int j = 0; j < clients[i].files.size(); j++) {
                         bzero(sendline, sizeof(sendline));
-                        strcpy(sendline, clients[i].filenames[j].c_str());
+                        bzero(sizeBuf,sizeof(sizeBuf));
+                        strcpy(sendline,"filename:");
+                        strcat(sendline, clients[i].files[j].fileName);
+                        strcat(sendline,",size:");
+                        sprintf(sizeBuf,"%ld",clients[i].files[j].fileSize);
+                        strncat(sendline,sizeBuf,strlen(sizeBuf));
                         strcat(sendline, "\n");
                         write(sockfd, sendline, strlen(sendline));
                     }
                 } else {
                     sprintf(sendline, "The client index %d is not valid!\n", i);
-                    fprintf(stderr, sendline);
+                    fputs(sendline,stderr);
                     write(sockfd, sendline, strlen(sendline));
 
                 }
@@ -256,7 +289,7 @@ void *doit(void *arg) {
     showClientTerminatedInfo(clients[index].sockfd);
     clients[index].sockfd = -1;
     bzero(clients[index].username, sizeof(clients[index].username));
-    clients[index].filenames.clear();
+    clients[index].files.clear();
     close(connfd);
     return (NULL);
 }

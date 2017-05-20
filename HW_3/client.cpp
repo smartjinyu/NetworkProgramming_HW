@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 
 #define MAXLINE 4096
 #define MAXNAMELEN 256
@@ -34,22 +35,36 @@ FILE *fpStdin;
 char clientName[MAXNAMELEN] = {0};
 
 void *clientInput(void *);
+
 void *servListen(void *);
+
+long getFileSize(char *fileName) {
+    struct stat st;
+    stat(fileName, &st);
+    return st.st_size;
+}
+
 void listfiles(int sockfd) {
     DIR *dir;
     struct dirent *ent;
     if ((dir = opendir(".")) != NULL) {
         /* print all the files and directories within directory */
         char sendline[MAXLINE] = {0};
+        char buf[256] = {0};// file size to char *
         strcpy(sendline, "listMyfiles:<");
         while ((ent = readdir(dir)) != NULL) {
             if (ent->d_type == DT_REG) {
                 // regular file
+                bzero(buf, sizeof(buf));
+                sprintf(buf, "%ld", getFileSize(ent->d_name));
                 strcat(sendline, ent->d_name);
                 strcat(sendline, ",");
+                strncat(sendline, buf, strlen(buf));
+                strcat(sendline, ";");
+                // one entry is like "fileName,2555;"
             }
         }
-        sendline[strlen(sendline) - 1] = '>';
+        sendline[strlen(sendline)] = '>';
         write(sockfd, sendline, strlen(sendline));
         closedir(dir);
     } else {
@@ -83,7 +98,7 @@ void showHelpMenu() {
 
 int main(int argc, char **argv) {
     struct sockaddr_in servaddr;
-    const int socketOpOn =1;
+    const int socketOpOn = 1;
     if (argc != 3) {
         fprintf(stderr, "Wrong arguments! Please run ./Client <ip> <port>\n");
         exit(-1);
@@ -143,7 +158,6 @@ void *clientInput(void *arg) {
 }
 
 
-
 void showClientTerminatedInfo(int sockfd) {
     struct sockaddr_in terminatedAddr;
     bzero(&terminatedAddr, sizeof(terminatedAddr));
@@ -193,7 +207,8 @@ void *doit(void *arg) {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
-void *servListen(void *arg){
+
+void *servListen(void *arg) {
     int CSlistenfd = -1, CSconnectfd = -1, CSclientfd = -1;
     struct sockaddr_in serverAddr, CSclientAddr;
     const int socketOpOn = 1;
@@ -202,20 +217,20 @@ void *servListen(void *arg){
 
 
     CSlistenfd = socket(AF_INET, SOCK_STREAM, 0);
-    printf("CSlistenfd = %d\n",CSlistenfd);
+    // printf("CSlistenfd = %d\n",CSlistenfd);
     bzero(&serverAddr, sizeof(serverAddr));
     socklen_t len = sizeof(serverAddr);
     getsockname(sockfdClient, (struct sockaddr *) &serverAddr, &len);
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     setsockopt(CSlistenfd, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
     int result = bind(CSlistenfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-    if(result==-1){
-        printf("Error when bind, error = %s\n",strerror(errno));
+    if (result == -1) {
+        printf("Error when bind, error = %s\n", strerror(errno));
     }
 
     result = listen(CSlistenfd, LISTENQ);
-    if(result==-1){
-        printf("Error when listen, error = %s\n",strerror(errno));
+    if (result == -1) {
+        printf("Error when listen, error = %s\n", strerror(errno));
     }
     for (;;) {
         bzero(&CSclientAddr, sizeof(CSclientAddr));
@@ -237,4 +252,5 @@ void *servListen(void *arg){
     }
 
 }
+
 #pragma clang diagnostic pop
