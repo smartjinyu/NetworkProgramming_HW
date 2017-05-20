@@ -25,4 +25,8 @@ unistd.h
 -
 dirent.h
 -
+string
+-
+vector
+-
 

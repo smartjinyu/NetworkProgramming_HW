@@ -67,9 +67,10 @@ void showClientTerminatedInfo(int sockfd) {
 
 void *doit(void *);
 
-void str_echo(int sockfd, int index) {
+void str_echo(int index) {
     ssize_t n;
     char recvline[MAXLINE] = {0};
+    int sockfd = clients[index].sockfd;
     again:
     while ((n = read(sockfd, recvline, MAXLINE)) > 0) {
         fputs(recvline, stdout);
@@ -248,8 +249,8 @@ void *doit(void *arg) {
     free(arg);
     pthread_detach(pthread_self());
     int connfd = clients[index].sockfd;
-    // printf("New client connected, index = %d, sockfd = %d\n", index, connfd);
-    str_echo(connfd, index);
+    // printf("New client connected, index = %d, sockfdClient = %d\n", index, connfd);
+    str_echo(index);
 
     // thread terminated
     showClientTerminatedInfo(clients[index].sockfd);
