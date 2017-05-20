@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
+#include <map>
 
 #define MAXLINE 4096
 #define MAXNAMELEN 256
@@ -30,6 +31,8 @@ struct clientInfo {
 };
 
 clientInfo clients[MAXCLIENTS];
+std::map<std::string, int> p2pConnections;
+// threads receiving files now, key: filename, value: connections, 0 represents file transfer succeed
 
 struct sendFileParam {
     char ip[MAXNAMELEN] = {0};
@@ -197,6 +200,14 @@ void cliFunc(FILE *fp_arg) {
             // parse data from command
 
             write(sockfdClient, "confirm\n", 8);// send ack to sender
+
+            std::map<std::string, int>::iterator iterator = p2pConnections.find(filename);
+            if (iterator == p2pConnections.end()) {
+                p2pConnections.insert(std::pair<std::string, int>(filename, 1));
+            } else {
+                iterator->second++;
+            }
+
             FILE *recvFile = fopen(filename, "r+");
             if (recvFile == NULL) {
                 //printf("file not exists\n");
@@ -229,6 +240,15 @@ void cliFunc(FILE *fp_arg) {
                 }
                 fflush(recvFile);
                 fclose(recvFile);
+
+                iterator = p2pConnections.find(filename);
+                iterator->second--;
+                if(iterator->second==0){
+                    listfiles(sockfdClient);
+                    p2pConnections.erase(iterator);
+                    printf("Download file succeeded!\n");
+                }
+
 
             } else {
                 fputs("error when opening file", stderr);
@@ -347,6 +367,14 @@ void servRecv(int index) {
             // parse data from command
 
             write(sockfd, "confirm\n", 8);// send ack to sender
+
+            std::map<std::string, int>::iterator iterator = p2pConnections.find(filename);
+            if (iterator == p2pConnections.end()) {
+                p2pConnections.insert(std::pair<std::string, int>(filename, 1));
+            } else {
+                iterator->second++;
+            }
+
             FILE *recvFile = fopen(filename, "r+");
             if (recvFile == NULL) {
                 //printf("file not exists\n");
@@ -379,6 +407,14 @@ void servRecv(int index) {
                 }
                 fflush(recvFile);
                 fclose(recvFile);
+                
+                iterator = p2pConnections.find(filename);
+                iterator->second--;
+                if(iterator->second==0){
+                    listfiles(sockfdClient);
+                    p2pConnections.erase(iterator);
+                    printf("Download file succeeded!\n");
+                }
 
             } else {
                 fputs("error when opening file", stderr);
