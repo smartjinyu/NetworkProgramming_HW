@@ -179,9 +179,11 @@ void cliFunc(FILE *fp_arg) {
             pthread_create(&tid1, NULL, connectAndSendFile, &param);
 
         }
-        if (strncmp(recvline, "sendtoSer:", 10) == 0) {
+        if (strncmp(recvline, "serSendto:", 10) == 0) {
             // receive file from server
             // sendtoSer:filename,offset,filesize
+            write(sockfdClient, recvline, strlen(recvline));// send ack to sender
+
             char filename[MAXNAMELEN] = {0};
             char offsetc[MAXNAMELEN] = {0};
             char sizec[MAXNAMELEN] = {0};
@@ -199,7 +201,6 @@ void cliFunc(FILE *fp_arg) {
             long filesize = atol(sizec);
             // parse data from command
 
-            write(sockfdClient, "confirm\n", 8);// send ack to sender
 
             std::map<std::string, int>::iterator iterator = p2pConnections.find(filename);
             if (iterator == p2pConnections.end()) {
@@ -243,7 +244,7 @@ void cliFunc(FILE *fp_arg) {
 
                 iterator = p2pConnections.find(filename);
                 iterator->second--;
-                if(iterator->second==0){
+                if (iterator->second == 0) {
                     listfiles(sockfdClient);
                     p2pConnections.erase(iterator);
                     printf("Download file succeeded!\n");
@@ -264,8 +265,9 @@ void showHelpMenu() {
     printf("------------ Help Menu -------------\n");
     printf("help: show help menu\n");
     printf("listclients: list all the clients online\n");
-    printf("listfiles:<index> list files of clients of index (-1 on the server)\n");
+    printf("listfiles:<index> list files on clients of index (-1 on the server)\n");
     printf("download:<filename> download file from server and other clients\n");
+    printf("upload:<index>,<filename> upload file to other clients (-1 to the server)\n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -407,10 +409,10 @@ void servRecv(int index) {
                 }
                 fflush(recvFile);
                 fclose(recvFile);
-                
+
                 iterator = p2pConnections.find(filename);
                 iterator->second--;
-                if(iterator->second==0){
+                if (iterator->second == 0) {
                     listfiles(sockfdClient);
                     p2pConnections.erase(iterator);
                     printf("Download file succeeded!\n");
