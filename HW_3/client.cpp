@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
 #define MAXLINE 4096
 #define MAXNAMELEN 256
@@ -29,8 +31,17 @@ struct clientInfo {
 
 clientInfo clients[MAXCLIENTS];
 
+struct sendFileParam {
+    char ip[MAXNAMELEN] = {0};
+    int port;
+    char filename[MAXNAMELEN] = {0};
+    long offset;
+    long filesize;
+};
+
 int sockfdClient; /* global for both threads to access */
 FILE *fpStdin;
+
 
 char clientName[MAXNAMELEN] = {0};
 
@@ -61,10 +72,10 @@ void listfiles(int sockfd) {
                 strcat(sendline, ",");
                 strncat(sendline, buf, strlen(buf));
                 strcat(sendline, ";");
-                // one entry is like "fileName,2555;"
             }
         }
         sendline[strlen(sendline)] = '>';
+        // sendline is like "<HW_3.cbp,9296;Client,97384;Server,77504;CMakeCache.txt,33107;>"
         write(sockfd, sendline, strlen(sendline));
         closedir(dir);
     } else {
@@ -75,7 +86,50 @@ void listfiles(int sockfd) {
 
 }
 
-void str_cli(FILE *fp_arg) {
+void *connectAndSendFile(void *arg) {
+    sendFileParam param = *((sendFileParam *) arg);
+    //printf("param ip = %s, port = %d\n",param.ip,param.port);
+    int p2pClientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    int socketOpOn = 1;
+    struct sockaddr_in clientAddr;
+    bzero(&clientAddr, sizeof(clientAddr));
+    clientAddr.sin_family = AF_INET;
+    clientAddr.sin_port = htons((uint16_t) param.port);
+    inet_pton(AF_INET, param.ip, &clientAddr.sin_addr);
+    setsockopt(p2pClientSocket, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
+    if (connect(p2pClientSocket, (struct sockaddr *) &clientAddr, sizeof(clientAddr)) < 0) {
+        fprintf(stderr, "Connect to p2p server failed, error message = %s\n", strerror(errno));
+    }
+    char sendline[MAXLINE] = {0};
+    sprintf(sendline, "p2psend:%s,%ld,%ld\n", param.filename, param.offset, param.filesize);
+    write(p2pClientSocket, sendline, strlen(sendline));
+    // send file info to receiver
+
+    bzero(sendline, sizeof(sendline));
+    if (read(p2pClientSocket, sendline, MAXLINE) != 0 && strncmp(sendline, "confirm", 7) == 0) {
+        // ack from receiver, begin to transfer
+        int f = open(param.filename, O_RDONLY);
+        off_t offset = param.offset;
+        ssize_t len = 0;
+        long sent_data = 0;
+        while ((len = sendfile(p2pClientSocket, f, &offset, MAXLINE)) > 0) {
+            sent_data += len;
+            //printf("sent len = %d, total = %d\n",len,sent_data);
+            if (sent_data >= param.filesize) {
+                break;
+            }
+        }
+        close(f);
+    } else {
+        bzero(sendline, sizeof(sendline));
+        strcpy(sendline, "Not receive confirm message from p2p receiver\n");
+        fputs(sendline, stderr);
+    }
+    close(p2pClientSocket);
+    return (NULL);
+}
+
+void cliFunc(FILE *fp_arg) {
     char recvline[MAXLINE] = {0};
     pthread_t tid;
 
@@ -83,7 +137,105 @@ void str_cli(FILE *fp_arg) {
 
     pthread_create(&tid, NULL, clientInput, NULL);
     while (read(sockfdClient, recvline, MAXLINE) > 0) {
+        // receive from server
         fputs(recvline, stdout);
+        fflush(stdout);
+
+        if (strncmp(recvline, "sendto:", 7) == 0) {
+            // connect to other client and send file to it
+            // command is like "sendto:recvip,recvport,filename,offset,size\n"
+            printf("\n");
+            sendFileParam param;
+            char clientPortc[MAXNAMELEN] = {0};
+            char offsetc[MAXNAMELEN] = {0};
+            char sizec[MAXNAMELEN] = {0};
+            int i = 6, j = 6; // i is previous ',' , j is current ','
+            for (; recvline[j] != ','; j++);
+            strncpy(param.ip, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(clientPortc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+            param.port = atoi(clientPortc);
+
+            for (; recvline[j] != ','; j++);
+            strncpy(param.filename, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(offsetc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+            param.offset = atol(offsetc);
+
+            for (; recvline[j] != '\n'; j++);
+            strncpy(sizec, recvline + i + 1, (size_t) (j - i - 1));
+            param.filesize = atol(sizec);
+            // parse command
+            pthread_t tid1;
+            pthread_create(&tid1, NULL, connectAndSendFile, &param);
+
+        }
+        if (strncmp(recvline, "sendtoSer:", 10) == 0) {
+            // receive file from server
+            // sendtoSer:filename,offset,filesize
+            char filename[MAXNAMELEN] = {0};
+            char offsetc[MAXNAMELEN] = {0};
+            char sizec[MAXNAMELEN] = {0};
+            int i = 9, j = 9; // i is previous ',' , j is current ','
+            for (; recvline[j] != ','; j++);
+            strncpy(filename, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(offsetc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != '\n'; j++);
+            strncpy(sizec, recvline + i + 1, (size_t) (j - i - 1));
+            long filesize = atol(sizec);
+            // parse data from command
+
+            write(sockfdClient, "confirm\n", 8);// send ack to sender
+            FILE *recvFile = fopen(filename, "r+");
+            if (recvFile == NULL) {
+                //printf("file not exists\n");
+                recvFile = fopen(filename, "w+");
+                // w+ mode will discard file content already exists
+            }
+
+            if (recvFile != NULL) {
+                if (fseek(recvFile, atol(offsetc), SEEK_SET) < 0) {
+                    fprintf(stderr, "fseek error, error = %s\n", strerror(errno));
+                } // move to offset
+
+                char recvbuff[MAXLINE] = {0};
+                ssize_t len = 0;
+                long data_received = 0;
+                while ((len = recv(sockfdClient, recvbuff, MAXLINE, 0)) > 0) {
+                    data_received += len;
+                    //printf("recv = %s\n",recvbuff);
+                    if (data_received < filesize) {
+                        fwrite(recvbuff, sizeof(char), (size_t) len, recvFile);
+                        //printf("recv0 len = %d, total = %d\n",len,data_received);
+                    } else {
+                        fwrite(recvbuff, sizeof(char), (size_t) (filesize - data_received + len), recvFile);
+                        //printf("recv1 len = %d, total = %d\n",filesize - data_received + len,data_received);
+
+                        // only write required size of data
+                        break;
+                    }
+                    bzero(recvbuff, sizeof(recvbuff));
+                }
+                fflush(recvFile);
+                fclose(recvFile);
+
+            } else {
+                fputs("error when opening file", stderr);
+            }
+
+        }
+
         bzero(recvline, sizeof(recvline));
     }
 }
@@ -93,6 +245,7 @@ void showHelpMenu() {
     printf("help: show help menu\n");
     printf("listclients: list all the clients online\n");
     printf("listfiles:<index> list files of clients of index (-1 on the server)\n");
+    printf("download:<filename> download file from server and other clients\n");
     printf("------------ Help Menu -------------\n");
 }
 
@@ -107,12 +260,9 @@ int main(int argc, char **argv) {
     // client socket
     bzero(&servaddr, sizeof(servaddr));
     sockfdClient = socket(AF_INET, SOCK_STREAM, 0);
+    setsockopt(sockfdClient, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons((uint16_t) atoi(argv[2]));
-    inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
-    setsockopt(sockfdClient, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
-
-
     if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0) {
         // translate the ip address
         fprintf(stderr, "inet_pton error for %s", argv[1]);
@@ -130,7 +280,8 @@ int main(int argc, char **argv) {
     pthread_create(&tid, NULL, servListen, NULL);
 
     listfiles(sockfdClient);
-    str_cli(stdin);
+    cliFunc(stdin);
+    close(sockfdClient);
     return 0;
 }
 
@@ -168,33 +319,93 @@ void showClientTerminatedInfo(int sockfd) {
 }
 
 
-void str_echo(int sockfd, int index) {
+void servRecv(int index) {
     ssize_t n;
     char recvline[MAXLINE] = {0};
+    int sockfd = clients[index].sockfd;
     again:
     while ((n = read(sockfd, recvline, MAXLINE)) > 0) {
         fputs(recvline, stdout);
-        write(sockfd, recvline, strlen(recvline));
+        if (strncmp(recvline, "p2psend:", 8) == 0) {
+            // receive file from client
+            // p2psend:filename,offset,filesize
+            char filename[MAXNAMELEN] = {0};
+            char offsetc[MAXNAMELEN] = {0};
+            char sizec[MAXNAMELEN] = {0};
+            int i = 7, j = 7; // i is previous ',' , j is current ','
+            for (; recvline[j] != ','; j++);
+            strncpy(filename, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(offsetc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != '\n'; j++);
+            strncpy(sizec, recvline + i + 1, (size_t) (j - i - 1));
+            long filesize = atol(sizec);
+            // parse data from command
+
+            write(sockfd, "confirm\n", 8);// send ack to sender
+            FILE *recvFile = fopen(filename, "r+");
+            if (recvFile == NULL) {
+                //printf("file not exists\n");
+                recvFile = fopen(filename, "w+");
+                // w+ mode will discard file content already exists
+            }
+
+            if (recvFile != NULL) {
+                if (fseek(recvFile, atol(offsetc), SEEK_SET) < 0) {
+                    fprintf(stderr, "fseek error, error = %s\n", strerror(errno));
+                } // move to offset
+
+                char recvbuff[MAXLINE] = {0};
+                ssize_t len = 0;
+                long data_received = 0;
+                while ((len = recv(sockfd, recvbuff, MAXLINE, 0)) > 0) {
+                    data_received += len;
+                    //printf("recv = %s\n",recvbuff);
+                    if (data_received < filesize) {
+                        fwrite(recvbuff, sizeof(char), (size_t) len, recvFile);
+                        //printf("recv0 len = %d, total = %d\n",len,data_received);
+                    } else {
+                        fwrite(recvbuff, sizeof(char), (size_t) (filesize - data_received + len), recvFile);
+                        //printf("recv1 len = %d, total = %d\n",filesize - data_received + len,data_received);
+
+                        // only write required size of data
+                        break;
+                    }
+                    bzero(recvbuff, sizeof(recvbuff));
+                }
+                fflush(recvFile);
+                fclose(recvFile);
+
+            } else {
+                fputs("error when opening file", stderr);
+            }
+
+        }
+
+        //write(sockfd, recvline, strlen(recvline));
         bzero(recvline, sizeof(recvline));
     }
 
     if (n < 0 && errno == EINTR) {
         goto again; // ignore EINTR
     } else if (n < 0) {
-        fprintf(stderr, "str_echo:read error");
+        fprintf(stderr, "servRecv:read error");
         return;
     }
 }
 
 
-void *doit(void *arg) {
+void *servFunc(void *arg) {
     int index;
     index = *((int *) arg);
     free(arg);
     pthread_detach(pthread_self());
     int connfd = clients[index].sockfd;
-    // printf("New client connected, index = %d, sockfdClient = %d\n", index, connfd);
-    str_echo(connfd, index);
+    servRecv(index);
 
     // thread terminated
     showClientTerminatedInfo(clients[index].sockfd);
@@ -223,14 +434,14 @@ void *servListen(void *arg) {
     getsockname(sockfdClient, (struct sockaddr *) &serverAddr, &len);
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     setsockopt(CSlistenfd, SOL_SOCKET, SO_REUSEADDR, &socketOpOn, sizeof(socketOpOn));
-    int result = bind(CSlistenfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-    if (result == -1) {
-        printf("Error when bind, error = %s\n", strerror(errno));
+    if (bind(CSlistenfd, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) < 0) {
+        fprintf(stderr, "Bind error, error = %s", strerror(errno));
     }
 
-    result = listen(CSlistenfd, LISTENQ);
-    if (result == -1) {
+    if (listen(CSlistenfd, LISTENQ) < 0) {
         printf("Error when listen, error = %s\n", strerror(errno));
+        fprintf(stderr, "Listen error, error = %s", strerror(errno));
+
     }
     for (;;) {
         bzero(&CSclientAddr, sizeof(CSclientAddr));
@@ -248,7 +459,7 @@ void *servListen(void *arg) {
 
         int *argcc = (int *) malloc(sizeof(*argcc));
         *argcc = i;
-        pthread_create(&tid, NULL, &doit, argcc); /* pass by value*/
+        pthread_create(&tid, NULL, &servFunc, argcc); /* pass by value*/
     }
 
 }

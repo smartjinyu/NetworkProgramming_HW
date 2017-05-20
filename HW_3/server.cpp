@@ -12,9 +12,10 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <vector>
-#include <string>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
@@ -32,6 +33,22 @@ struct clientInfo {
     std::vector<file_info> files;
 };
 
+/*
+ * return
+ * 0 file not exits
+ * > 0 file size
+ */
+
+long isFileExists(std::vector<file_info> *files, char *filename) {
+    for (int i = 0; i < (*files).size(); i++) {
+        if (strcmp((*files)[i].fileName, filename) == 0) {
+            return (*files)[i].fileSize;
+        }
+    }
+    return 0;
+}
+
+
 clientInfo clients[MAXCLIENTS];
 std::vector<file_info> serverFiles;
 
@@ -41,7 +58,7 @@ void setReUseAddr(int sockfd) {
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag, optlen);
 }
 
-long getFileSize(char* fileName){
+long getFileSize(char *fileName) {
     struct stat st;
     stat(fileName, &st);
     return st.st_size;
@@ -57,7 +74,7 @@ void listfiles() {
             if (ent->d_type == DT_REG) {
                 // regular file
                 file_info file;
-                strcpy(file.fileName,ent->d_name);
+                strcpy(file.fileName, ent->d_name);
                 file.fileSize = getFileSize(ent->d_name);
                 serverFiles.push_back(file);
             }
@@ -80,7 +97,7 @@ void showClientTerminatedInfo(int sockfd) {
            inet_ntoa(terminatedAddr.sin_addr), ntohs(terminatedAddr.sin_port));
 }
 
-void *doit(void *);
+void *servFunc(void *);
 
 void str_echo(int index) {
     ssize_t n;
@@ -100,8 +117,9 @@ void str_echo(int index) {
                 strncat(buff, recvline, strlen(recvline));
             }
             // ensure the data is complete
-            int i; // 10 is the character <, i means the previous ';'
-            int j = 12; // j means the current ';'
+            // recvline is like "<HW_3.cbp,9296;Client,97384;Server,77504;CMakeCache.txt,33107;>"
+            int i; // i means the previous ';'
+            int j = 12; // j means the current ';',12 is <
             clients[index].files.clear();
             char sizeBuf[256] = {0};
             for (int k = 12; buff[k] != '>'; k++) {
@@ -182,12 +200,12 @@ void str_echo(int index) {
                 char sizeBuf[256] = {0};
                 for (int j = 0; j < serverFiles.size(); j++) {
                     bzero(sendline, sizeof(sendline));
-                    bzero(sizeBuf,sizeof(sizeBuf));
-                    strcpy(sendline,"filename:");
+                    bzero(sizeBuf, sizeof(sizeBuf));
+                    strcpy(sendline, "filename:");
                     strcat(sendline, serverFiles[j].fileName);
-                    strcat(sendline,",size:");
-                    sprintf(sizeBuf,"%ld",serverFiles[j].fileSize);
-                    strncat(sendline,sizeBuf,strlen(sizeBuf));
+                    strcat(sendline, ",size:");
+                    sprintf(sizeBuf, "%ld", serverFiles[j].fileSize);
+                    strncat(sendline, sizeBuf, strlen(sizeBuf));
                     strcat(sendline, "\n");
                     write(sockfd, sendline, strlen(sendline));
 
@@ -199,21 +217,137 @@ void str_echo(int index) {
                     char sizeBuf[256] = {0};
                     for (int j = 0; j < clients[i].files.size(); j++) {
                         bzero(sendline, sizeof(sendline));
-                        bzero(sizeBuf,sizeof(sizeBuf));
-                        strcpy(sendline,"filename:");
+                        bzero(sizeBuf, sizeof(sizeBuf));
+                        strcpy(sendline, "filename:");
                         strcat(sendline, clients[i].files[j].fileName);
-                        strcat(sendline,",size:");
-                        sprintf(sizeBuf,"%ld",clients[i].files[j].fileSize);
-                        strncat(sendline,sizeBuf,strlen(sizeBuf));
+                        strcat(sendline, ",size:");
+                        sprintf(sizeBuf, "%ld", clients[i].files[j].fileSize);
+                        strncat(sendline, sizeBuf, strlen(sizeBuf));
                         strcat(sendline, "\n");
                         write(sockfd, sendline, strlen(sendline));
                     }
                 } else {
                     sprintf(sendline, "The client index %d is not valid!\n", i);
-                    fputs(sendline,stderr);
+                    fputs(sendline, stderr);
                     write(sockfd, sendline, strlen(sendline));
 
                 }
+            }
+        }
+
+        if (strncmp(recvline, "download:", 9) == 0) {
+            // send file to client using p2p
+            char name[MAXNAMELEN] = {0};
+            char sendline[MAXLINE] = {0};
+            strncpy(name, recvline + 9, strlen(recvline) - 10);
+            long fileExistsOnServer = isFileExists(&serverFiles, name);
+            std::vector<int> clientIndex;
+            long fileSize = fileExistsOnServer;
+            for (int i = 0; i < MAXCLIENTS; i++) {
+                long result = 0;
+                if (i != index && clients[i].sockfd != -1 && (result = isFileExists(&clients[i].files, name)) != 0) {
+                    clientIndex.push_back(i);
+                    fileSize = result;
+                }
+            }
+            if (fileExistsOnServer == 0 && clientIndex.size() == 0) {
+                // no such file exists in server and all clients
+                sprintf(sendline, "%s not exists in server and all clients\n", name);
+                fputs(sendline, stderr);
+                write(sockfd, sendline, sizeof(sendline));
+            } else if (fileExistsOnServer == 0 && clientIndex.size() != 0) {
+                // server does not have this file, all data sent from other clients
+
+                struct sockaddr_in curClientAddr;
+                bzero(&curClientAddr, sizeof(curClientAddr));
+                socklen_t len = sizeof(curClientAddr);
+                getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
+                // info of the client who will receive file
+
+                long chunkSize = fileSize / clientIndex.size(); // file chunk size each client need to transfer
+                printf("chunkSize = %ld, sent from clients\n", chunkSize);
+                long offset = 0;
+                for (int i = 0; i < clientIndex.size() - 1; i++) {
+                    bzero(sendline, sizeof(sendline));
+                    sprintf(sendline, "sendto:%s,%d,%s,%ld,%ld\n",
+                            inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port), name, offset, chunkSize);
+                    // command is like "sendto:recvip,recvport,filename,offset,size\n"
+                    write(clients[clientIndex[i]].sockfd, sendline, strlen(sendline));
+                    offset += chunkSize;
+                }
+
+                // last client needs additional consideration
+                bzero(sendline, sizeof(sendline));
+                sprintf(sendline, "sendto:%s,%d,%s,%ld,%ld\n",
+                        inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port), name, offset,
+                        fileSize - offset);
+                // command is like "sendto:recvip,recvport,filename,offset,size\n"
+                write(clients[clientIndex[clientIndex.size() - 1]].sockfd, sendline, strlen(sendline));
+            } else {
+                // server has this file, data sent from server and other clients
+                long serverToTrans = 0;
+                if (clientIndex.size() == 0) {
+                    // only server has this file
+                    serverToTrans = fileSize;
+                } else {
+                    // server and other clients have this file
+
+                    struct sockaddr_in curClientAddr;
+                    bzero(&curClientAddr, sizeof(curClientAddr));
+                    socklen_t len = sizeof(curClientAddr);
+                    getpeername(sockfd, (struct sockaddr *) &curClientAddr, &len);
+                    // info of the client who will receive file
+
+                    long chunkSize =
+                            fileSize / (clientIndex.size() + 1); // file chunk size each client need to transfer
+                    printf("chunkSize = %ld, sent from clients and server\n", chunkSize);
+                    long offset = chunkSize;// [0, chunkSize - 1] will be transferred be server
+                    serverToTrans = chunkSize;
+                    for (int i = 0; i < clientIndex.size() - 1; i++) {
+                        bzero(sendline, sizeof(sendline));
+                        sprintf(sendline, "sendto:%s,%d,%s,%ld,%ld\n",
+                                inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port), name, offset,
+                                chunkSize);
+                        // command is like "sendto:recvip,recvport,filename,offset,size\n"
+                        write(clients[clientIndex[i]].sockfd, sendline, strlen(sendline));
+                        offset += chunkSize;
+                    }
+
+                    // last client needs additional consideration
+                    bzero(sendline, sizeof(sendline));
+                    sprintf(sendline, "sendto:%s,%d,%s,%ld,%ld\n",
+                            inet_ntoa(curClientAddr.sin_addr), ntohs(curClientAddr.sin_port), name, offset,
+                            fileSize - offset);
+                    // command is like "sendto:recvip,recvport,filename,offset,size\n"
+                    write(clients[clientIndex[clientIndex.size() - 1]].sockfd, sendline, strlen(sendline));
+
+                }
+
+                bzero(sendline, sizeof(sendline));
+                sprintf(sendline, "sendtoSer:%s,%d,%ld\n", name, 0, serverToTrans);
+                // command is like "sendtoSer:filename,offset,size\n"
+                write(sockfd, sendline, strlen(sendline));
+                if (read(sockfd, sendline, MAXLINE) != 0 && strncmp(sendline, "confirm", 7) == 0) {
+                    // ack from receiver, begin to transfer
+                    int f = open(name, O_RDONLY);
+                    off_t offset = 0;
+                    ssize_t len = 0;
+                    long sent_data = 0;
+                    while ((len = sendfile(sockfd, f, &offset, MAXLINE)) > 0) {
+                        sent_data += len;
+                        //printf("sent len = %d, total = %d\n",len,sent_data);
+                        if (sent_data >= serverToTrans) {
+                            break;
+                        }
+                    }
+                    close(f);
+                } else {
+                    bzero(sendline, sizeof(sendline));
+                    strcpy(sendline, "Not receive confirm message from p2p receiver\n");
+                    fputs(sendline, stderr);
+                }
+
+
             }
         }
 
@@ -223,7 +357,7 @@ void str_echo(int index) {
     if (n < 0 && errno == EINTR) {
         goto again; // ignore EINTR
     } else if (n < 0) {
-        fprintf(stderr, "str_echo:read error");
+        fprintf(stderr, "servRecv:read error");
         return;
     }
 }
@@ -270,13 +404,13 @@ int main(int argc, char **argv) {
 
         int *arg = (int *) malloc(sizeof(*arg));
         *arg = i;
-        pthread_create(&tid, NULL, &doit, arg); /* pass by value*/
+        pthread_create(&tid, NULL, &servFunc, arg); /* pass by value*/
     }
 }
 
 #pragma clang diagnostic pop
 
-void *doit(void *arg) {
+void *servFunc(void *arg) {
     int index;
     index = *((int *) arg);
     free(arg);
