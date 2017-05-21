@@ -16,6 +16,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
+#include <string>
+#include <map>
 
 #define MAXLINE 4096
 #define LISTENQ 1024
@@ -38,7 +40,6 @@ struct clientInfo {
  * 0 file not exits
  * > 0 file size
  */
-
 long isFileExists(std::vector<file_info> *files, char *filename) {
     for (int i = 0; i < (*files).size(); i++) {
         if (strcmp((*files)[i].fileName, filename) == 0) {
@@ -51,6 +52,9 @@ long isFileExists(std::vector<file_info> *files, char *filename) {
 
 clientInfo clients[MAXCLIENTS];
 std::vector<file_info> serverFiles;
+
+std::map<std::string, int> p2pConnections;
+// threads receiving files now, key: filename, value: connections, 0 represents file transfer succeed
 
 void setReUseAddr(int sockfd) {
     int flag = 1;
@@ -115,9 +119,9 @@ void sendFileToClient(int index, char *filename) {
     }
     if (fileExistsOnServer == 0 && clientIndex.size() == 0) {
         // no such file exists in server and all clients
-        sprintf(sendline, "%s not exists in server and all clients\n", filename);
+        sprintf(sendline, "%s not exists in server or any clients\n", filename);
         fputs(sendline, stderr);
-        write(sockfd, sendline, sizeof(sendline));
+        write(sockfd, sendline, strlen(sendline));
     } else if (fileExistsOnServer == 0 && clientIndex.size() != 0) {
         // server does not have this file, all data sent from other clients
 
@@ -128,7 +132,7 @@ void sendFileToClient(int index, char *filename) {
         // info of the client who will receive file
 
         long chunkSize = fileSize / clientIndex.size(); // file chunk size each client need to transfer
-        printf("chunkSize = %ld, sent from clients in %ld chunks\n", chunkSize,clientIndex.size());
+        printf("chunkSize = %ld, sent from clients in %ld chunks\n", chunkSize, clientIndex.size());
         long offset = 0;
         for (int i = 0; i < clientIndex.size() - 1; i++) {
             bzero(sendline, sizeof(sendline));
@@ -165,7 +169,7 @@ void sendFileToClient(int index, char *filename) {
 
             long chunkSize =
                     fileSize / (clientIndex.size() + 1); // file chunk size each client need to transfer
-            printf("chunkSize = %ld, sent from clients and server in %ld chunks\n", chunkSize,clientIndex.size() + 1);
+            printf("chunkSize = %ld, sent from clients and server in %ld chunks\n", chunkSize, clientIndex.size() + 1);
             long offset = chunkSize;// [0, chunkSize - 1] will be transferred be server
             serverToTrans = chunkSize;
             for (int i = 0; i < clientIndex.size() - 1; i++) {
@@ -197,8 +201,49 @@ void sendFileToClient(int index, char *filename) {
 
 
     }
+}
+
+void sendFileToServer(int index, char *filename) {
+    // clients upload file to server, the request is from client of index
+    int sockfd = clients[index].sockfd;
+    char sendline[MAXLINE] = {0};
+    long fileSize = 0;
+    std::vector<int> clientIndex;
+    for (int i = 0; i < MAXCLIENTS; i++) {
+        long result = 0;
+        if (clients[i].sockfd != -1 && (result = isFileExists(&clients[i].files, filename)) != 0) {
+            clientIndex.push_back(i);
+            fileSize = result;
+        }
+    }
+    if (clientIndex.size() == 0) {
+        // no such file in any client
+        sprintf(sendline, "%s not exists in any clients\n", filename);
+        fputs(sendline, stderr);
+        write(sockfd, sendline, strlen(sendline));
+    } else {
+        // ask clients to transfer the file
+        long chunkSize = fileSize / clientIndex.size(); // file chunk size each client need to transfer
+        printf("chunkSize = %ld, sent from clients in %ld chunks To server\n", chunkSize, clientIndex.size());
+        long offset = 0;
+        for (int i = 0; i < clientIndex.size() - 1; i++) {
+            bzero(sendline, sizeof(sendline));
+            sprintf(sendline, "uploadSer:%s,%ld,%ld\n", filename, offset, chunkSize);
+            // command is like "uploadSer:filename,offset,size\n"
+            write(clients[clientIndex[i]].sockfd, sendline, strlen(sendline));
+            offset += chunkSize;
+        }
+
+        // last client needs additional consideration
+        bzero(sendline, sizeof(sendline));
+        sprintf(sendline, "uploadSer:%s,%ld,%ld\n", filename, offset, fileSize - offset);
+        // command is like "uploadSer:filename,offset,size\n"
+        write(clients[clientIndex[clientIndex.size() - 1]].sockfd, sendline, strlen(sendline));
+
+    }
 
 }
+
 
 void str_echo(int index) {
     ssize_t n;
@@ -356,7 +401,8 @@ void str_echo(int index) {
             int mIndex = atoi(mIndexc);
             if (mIndex == -1) {
                 // send file to server
-                // todo
+                sendFileToServer(index, name);
+                // the index here is the upload request origin
             } else if (0 <= mIndex < MAXCLIENTS && clients[mIndex].sockfd != -1) {
                 // normal transfer to a client
                 sendFileToClient(mIndex, name);
@@ -371,7 +417,85 @@ void str_echo(int index) {
 
         }
 
-        if(strncmp(recvline,"serSendto:", 10) == 0){
+        if (strncmp(recvline, "uploadSer:", 10) == 0) {
+            // receive file from clients
+            // command is like "uploadSer:filename,offset,size\n"
+            char filename[MAXNAMELEN] = {0};
+            char offsetc[MAXNAMELEN] = {0};
+            char sizec[MAXNAMELEN] = {0};
+            int i = 9, j = 9; // i is previous ',' , j is current ','
+            for (; recvline[j] != ','; j++);
+            strncpy(filename, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(offsetc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != '\n'; j++);
+            strncpy(sizec, recvline + i + 1, (size_t) (j - i - 1));
+            long filesize = atol(sizec);
+            // parse command
+            char sendline[MAXLINE] = {0};
+            sprintf(sendline, "upToSer:%s,%ld,%ld\n", filename, atol(offsetc), filesize);
+            write(sockfd, sendline, strlen(sendline));
+            // send ack to client
+            std::map<std::string, int>::iterator iterator = p2pConnections.find(filename);
+            if (iterator == p2pConnections.end()) {
+                p2pConnections.insert(std::pair<std::string, int>(filename, 1));
+            } else {
+                iterator->second++;
+            }
+            FILE *recvFile = fopen(filename, "r+");
+            if (recvFile == NULL) {
+                //printf("file not exists\n");
+                recvFile = fopen(filename, "w+");
+                // w+ mode will discard file content already exists
+            }
+
+            if (recvFile != NULL) {
+                if (fseek(recvFile, atol(offsetc), SEEK_SET) < 0) {
+                    fprintf(stderr, "fseek error, error = %s\n", strerror(errno));
+                } // move to offset
+
+                char recvbuff[MAXLINE] = {0};
+                ssize_t len = 0;
+                long data_received = 0;
+                while ((len = recv(sockfd, recvbuff, MAXLINE, 0)) > 0) {
+                    data_received += len;
+                    //printf("recv = %s\n",recvbuff);
+                    if (data_received < filesize) {
+                        fwrite(recvbuff, sizeof(char), (size_t) len, recvFile);
+                        //printf("recv0 len = %d, total = %d\n",len,data_received);
+                    } else {
+                        fwrite(recvbuff, sizeof(char), (size_t) (filesize - data_received + len), recvFile);
+                        //printf("recv1 len = %d, total = %d\n",filesize - data_received + len,data_received);
+
+                        // only write required size of data
+                        break;
+                    }
+                    bzero(recvbuff, sizeof(recvbuff));
+                }
+                fflush(recvFile);
+                fclose(recvFile);
+
+                iterator = p2pConnections.find(filename);
+                iterator->second--;
+                if (iterator->second == 0) {
+                    listfiles();
+                    p2pConnections.erase(iterator);
+                    printf("upload file to server succeeded!\n");
+                }
+
+            } else {
+                fputs("error when opening file", stderr);
+            }
+
+
+        }
+
+
+        if (strncmp(recvline, "serSendto:", 10) == 0) {
             // ack from client, send part of file to it
             char filename[MAXNAMELEN] = {0};
             char offsetc[MAXNAMELEN] = {0};
@@ -400,8 +524,6 @@ void str_echo(int index) {
                 }
             }
             close(f);
-
-
         }
         bzero(recvline, sizeof(recvline));
     }

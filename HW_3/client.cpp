@@ -123,6 +123,7 @@ void *connectAndSendFile(void *arg) {
             }
         }
         close(f);
+        printf("%s send successfully!(my part)\n", param.filename);
     } else {
         bzero(sendline, sizeof(sendline));
         strcpy(sendline, "Not receive confirm message from p2p receiver\n");
@@ -147,7 +148,6 @@ void cliFunc(FILE *fp_arg) {
         if (strncmp(recvline, "sendto:", 7) == 0) {
             // connect to other client and send file to it
             // command is like "sendto:recvip,recvport,filename,offset,size\n"
-            printf("\n");
             sendFileParam param;
             char clientPortc[MAXNAMELEN] = {0};
             char offsetc[MAXNAMELEN] = {0};
@@ -250,12 +250,57 @@ void cliFunc(FILE *fp_arg) {
                     printf("Download file succeeded!\n");
                 }
 
-
             } else {
                 fputs("error when opening file", stderr);
             }
 
         }
+
+        if (strncmp(recvline, "uploadSer:", 10) == 0) {
+            // send file to server
+            // command is like "uploadSer:filename,offset,size\n"
+            write(sockfdClient, recvline, strlen(recvline));
+            // just send ack back to server
+            // send file when server send ack
+        }
+
+        if (strncmp(recvline, "upToSer:", 8) == 0) {
+            // send file to server, this will begin to send file actually
+            // command is like "upToSer:filename,offset,size\n"
+            write(sockfdClient, recvline, strlen(recvline));
+            // just send ack back to server
+            char filename[MAXNAMELEN] = {0};
+            char offsetc[MAXNAMELEN] = {0};
+            char sizec[MAXNAMELEN] = {0};
+            int i = 7, j = 7; // i is previous ',' , j is current ','
+            for (; recvline[j] != ','; j++);
+            strncpy(filename, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != ','; j++);
+            strncpy(offsetc, recvline + i + 1, (size_t) (j - i - 1));
+            i = j++;
+
+            for (; recvline[j] != '\n'; j++);
+            strncpy(sizec, recvline + i + 1, (size_t) (j - i - 1));
+            long filesize = atol(sizec);
+            // parse command
+            int f = open(filename, O_RDONLY);
+            off_t offset = atol(offsetc);
+            ssize_t len = 0;
+            long sent_data = 0;
+            while ((len = sendfile(sockfdClient, f, &offset, MAXLINE)) > 0) {
+                sent_data += len;
+                //printf("sent len = %d, total = %d\n",len,sent_data);
+                if (sent_data >= filesize) {
+                    break;
+                }
+            }
+            close(f);
+            printf("%s send successfully!(my part)\n", filename);
+
+        }
+
 
         bzero(recvline, sizeof(recvline));
     }
@@ -292,6 +337,7 @@ int main(int argc, char **argv) {
     }
     if (connect(sockfdClient, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0) {
         fprintf(stderr, "Connect failed, error message = %s\n", strerror(errno));
+        return -1;
     }
     showHelpMenu();
     printf("Please input the client name: ");
