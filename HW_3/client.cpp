@@ -267,8 +267,6 @@ void cliFunc(FILE *fp_arg) {
         if (strncmp(recvline, "upToSer:", 8) == 0) {
             // send file to server, this will begin to send file actually
             // command is like "upToSer:filename,offset,size\n"
-            write(sockfdClient, recvline, strlen(recvline));
-            // just send ack back to server
             char filename[MAXNAMELEN] = {0};
             char offsetc[MAXNAMELEN] = {0};
             char sizec[MAXNAMELEN] = {0};
