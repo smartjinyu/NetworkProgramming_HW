@@ -67,7 +67,7 @@ void showClientTerminatedInfo(int index) {
 }
 
 void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
-    /* send message id to PC main connection(type 101)*/
+    // send message id to PC main connection (type 101)
     for (int i = 0; i < MAXCLIENTS; i++) {
         if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 101) {
             char sendline[MAXNAME] = {0};
@@ -76,6 +76,23 @@ void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
             write(clients[i].sockfd, sendline, strlen(sendline));
             printf("send mesg_id to win client, sockfd = %d, content = %s", clients[i].sockfd, sendline);
             // break; // only one windows client corresponding to a specific user_id
+        }
+    }
+
+}
+
+void sendActionToAndroid(boost::uuids::uuid uuid, int user_id, char *actionIndex) {
+    // send action back to Android main connection (type 201)
+    for (int i = 0; i < MAXCLIENTS; i++) {
+        if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 201) {
+            char sendline[MAXLINE] = {0};
+            strcpy(sendline, "key=");
+            strcat(sendline, messages[uuid].mesgKey);
+            strcat(sendline, "actionindex=%d");
+            strcat(sendline, actionIndex);
+            strcat(sendline, "*=!#");
+            write(clients[i].sockfd, sendline, strlen(sendline));
+            printf("send action to Android client, sockfd = %d, content = %s", clients[i].sockfd, sendline);
         }
     }
 
@@ -159,7 +176,7 @@ void recvFromClient(int index) {
                 clients[index].type = 101;
                 clients[index].user_id = atoi(user_idStr);
                 // keep connection alve
-            } else if (type == 102){
+            } else if (type == 102) {
                 // PC get message details
                 // type=102,userid=10001,mesg_id=xxx*=!#
                 int pos1 = (int) cmd.find(",mesg_id=");
@@ -167,24 +184,51 @@ void recvFromClient(int index) {
                 strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
                 clients[index].type = 102;
                 clients[index].user_id = atoi(user_idStr);
+                printf("user_id = %d\n", clients[index].user_id);
                 // user id
 
                 int pos2 = (int) cmd.find("*=!#");
-                char uuidStr[MAXNAME]={0};
-                strncpy(uuidStr,recvbuff+pos1+9,(size_t)pos2-pos1-9);
-                boost::uuids::string_generator  generator;
+                char uuidStr[MAXNAME] = {0};
+                strncpy(uuidStr, recvbuff + pos1 + 9, (size_t) pos2 - pos1 - 9);
+                boost::uuids::string_generator generator;
                 boost::uuids::uuid uuid0 = generator(uuidStr);
-                printf("uuid = %s\n",boost::uuids::to_string(uuid0));
+                printf("uuid = %s\n", boost::uuids::to_string(uuid0));
                 messageInfo message = messages[uuid0];
-                if(message.user_id == atoi(user_idStr)){
+                if (message.user_id == atoi(user_idStr)) {
                     char sendline[MAXLINE] = {0};
-                    strcpy(sendline,message.rawContent);
-                    strcat(sendline,"*=!#");
-                    write(clients[index].sockfd,sendline,strlen(sendline));
-                }else{
-                    fprintf(stderr,"Request message details belonging to other users!\n");
+                    strcpy(sendline, message.rawContent);
+                    strcat(sendline, "*=!#");
+                    write(clients[index].sockfd, sendline, strlen(sendline));
+                } else {
+                    fprintf(stderr, "Request message details belonging to other users!\n");
                 }
                 break; // close connection
+            } else if (type == 103) {
+                // PC send message action back
+                // type=103,userid=10001,mesg_id=xxx,actionindex=0*=!#
+                int pos1 = (int) cmd.find(",mesg_id=");
+                char user_idStr[MAXNAME] = {0};
+                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                int user_id = atoi(user_idStr);
+                clients[index].type = 103;
+                clients[index].user_id = user_id;
+                printf("user_id = %d\n", user_id);
+                // user id
+
+                int pos2 = (int) cmd.find(",actionindex=");
+                char uuidStr[MAXNAME] = {0};
+                strncpy(uuidStr, recvbuff + pos1 + 9, (size_t) pos2 - pos1 - 9);
+                boost::uuids::string_generator generator;
+                boost::uuids::uuid uuid0 = generator(uuidStr);
+                printf("uuid = %s\n", boost::uuids::to_string(uuid0));
+                // uuid
+
+                int pos3 = (int) cmd.find("*=!#");
+                char actionIndexStr[MAXNAME] = {0};
+                strncpy(actionIndexStr, recvbuff + pos2 + 13, (size_t) pos3 - pos2 - 13);
+                printf("action index = %s\n", actionIndexStr);
+                sendActionToAndroid(uuid0, user_id, actionIndexStr);
+                break;
             }
 
         }
