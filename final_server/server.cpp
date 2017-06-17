@@ -159,6 +159,32 @@ void recvFromClient(int index) {
                 clients[index].type = 101;
                 clients[index].user_id = atoi(user_idStr);
                 // keep connection alve
+            } else if (type == 102){
+                // PC get message details
+                // type=102,userid=10001,mesg_id=xxx*=!#
+                int pos1 = (int) cmd.find(",mesg_id=");
+                char user_idStr[MAXNAME] = {0};
+                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                clients[index].type = 102;
+                clients[index].user_id = atoi(user_idStr);
+                // user id
+
+                int pos2 = (int) cmd.find("*=!#");
+                char uuidStr[MAXNAME]={0};
+                strncpy(uuidStr,recvbuff+pos1+9,(size_t)pos2-pos1-9);
+                boost::uuids::string_generator  generator;
+                boost::uuids::uuid uuid0 = generator(uuidStr);
+                printf("uuid = %s\n",boost::uuids::to_string(uuid0));
+                messageInfo message = messages[uuid0];
+                if(message.user_id == atoi(user_idStr)){
+                    char sendline[MAXLINE] = {0};
+                    strcpy(sendline,message.rawContent);
+                    strcat(sendline,"*=!#");
+                    write(clients[index].sockfd,sendline,strlen(sendline));
+                }else{
+                    fprintf(stderr,"Request message details belonging to other users!\n");
+                }
+                break; // close connection
             }
 
         }
