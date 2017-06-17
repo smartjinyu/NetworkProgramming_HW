@@ -12,16 +12,17 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <vector>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/sendfile.h>
 #include <string>
 #include <map>
+#include <boost/uuid/uuid.hpp>            // uuid class
+#include <boost/uuid/uuid_generators.hpp> // generators
+#include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
+
 
 #define MAXLINE 4096
 #define LISTENQ 1024
 #define MAXCLIENTS 128
+#define MAXNAME 128
 
 struct clientInfo {
     int sockfd = -1;
@@ -35,7 +36,13 @@ struct clientInfo {
     }
 };
 
+struct messageInfo {
+    int user_id = -1;
+    char rawContent[MAXLINE] = {0}; // raw content will send to Windows client
+    char mesgKey[MAXLINE] = {0}; // message key will send back to Android client
+};
 
+std::map<boost::uuids::uuid, messageInfo> messages;
 clientInfo clients[MAXCLIENTS];
 
 void setReUseAddr(int sockfd) {
@@ -57,15 +64,61 @@ void showClientTerminatedInfo(int sockfd) {
 
 void recvFromClient(int index) {
     ssize_t n;
-    char recvline[MAXLINE] = {0};
+    char recvline[MAXLINE] = {0}; /* every read buffer */
+    char recvbuff[2 * MAXLINE] = {0}; /* store a full command */
     int sockfd = clients[index].sockfd;
     again:
     while ((n = read(sockfd, recvline, MAXLINE)) > 0) {
-        fputs(recvline, stdout);
-        fflush(stdout);
-        printf("\n");
+        printf("%s\n", recvline);
 
+        bzero(recvbuff, sizeof(recvbuff));
+        strcpy(recvbuff, recvline);
         bzero(recvline, sizeof(recvline));
+        int len = (int) strlen(recvbuff);
+        while (!(recvbuff[len - 4] == '*' && recvbuff[len - 3] == '=' && recvbuff[len - 2] == '!' &&
+                 recvbuff[len - 1] == '#')) {
+            /* every message end with *=!# */
+            /* a command isn't full */
+            read(sockfd, recvline, MAXLINE);
+            printf("%s\n", recvline);
+            strcat(recvbuff, recvline);
+            len = (int) strlen(recvbuff);
+            bzero(recvline, sizeof(recvline));
+        }
+        printf("full command = %s\n", recvbuff);
+        if (strncmp(recvbuff, "type=", 5) == 0) {
+            std::string cmd(recvbuff);
+            int pos0 = (int) cmd.find(",userid="); /* return the position of , */
+            char typeStr[MAXNAME] = {0};
+            strncpy(typeStr, recvbuff + 5, (size_t) pos0 - 5);
+            int type = atoi(typeStr);
+            // printf("connection type = %d\n",type);
+            if (type == 201) {
+                // main connection from android client
+                // type=201,userid=10001*=!#
+                int pos1 = (int) cmd.find("*=!#");
+                char user_idStr[MAXNAME] = {0};
+                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                clients[index].user_id = atoi(user_idStr);
+                // printf("user_id = %d\n",clients[index].user_id);
+            } else if (type == 202) {
+                // Android send message info
+                // type=202,userid=10001,content=key=0|com.android.messaging|0|com.android.messaging:sms:|10048##,notiname=Messaging,notitype=0,notititle=(650) 555-1212,noticontent=Nougat is sweet!,notiaction=Dismiss*=!#
+                int pos1 = (int) cmd.find(",content=");
+                char user_idStr[MAXNAME] = {0};
+                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                clients[index].user_id = atoi(user_idStr);
+                // printf("user_id = %d\n",clients[index].user_id);
+                boost::uuids::random_generator generator;
+                boost::uuids::uuid uuid0 = generator();
+                messageInfo message;
+                message.user_id = atoi(user_idStr);
+
+                break; // close connection
+            }
+
+        }
+
     }
 
     if (n < 0 && errno == EINTR) {
@@ -116,6 +169,7 @@ int main(int argc, char **argv) {
 
     bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
     listen(listenfd, LISTENQ);
+    messages.clear();
 
     for (;;) {
         bzero(&clientaddr, sizeof(clientaddr));
