@@ -61,6 +61,21 @@ void showClientTerminatedInfo(int sockfd) {
            inet_ntoa(terminatedAddr.sin_addr), ntohs(terminatedAddr.sin_port));
 }
 
+void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
+    /* send message id to PC main connection(type 101)*/
+    for (int i = 0; i < MAXCLIENTS; i++) {
+        if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 101) {
+            char sendline[MAXNAME] = {0};
+            strcpy(sendline, boost::uuids::to_string(uuid));
+            strcat(sendline, "#");
+            write(clients[i].sockfd, sendline, strlen(sendline));
+            printf("send mesg_id to win client, sockfd = %d, content = %s", clients[i].sockfd, sendline);
+            // break; // only one windows client corresponding to a specific user_id
+        }
+    }
+
+}
+
 
 void recvFromClient(int index) {
     ssize_t n;
@@ -99,21 +114,38 @@ void recvFromClient(int index) {
                 int pos1 = (int) cmd.find("*=!#");
                 char user_idStr[MAXNAME] = {0};
                 strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                clients[index].type = 201;
                 clients[index].user_id = atoi(user_idStr);
                 // printf("user_id = %d\n",clients[index].user_id);
             } else if (type == 202) {
                 // Android send message info
-                // type=202,userid=10001,content=key=0|com.android.messaging|0|com.android.messaging:sms:|10048##,notiname=Messaging,notitype=0,notititle=(650) 555-1212,noticontent=Nougat is sweet!,notiaction=Dismiss*=!#
+                // type=202,userid=10001,content=key=0|com.android.messaging|0|com.android.messaging:sms:|10048
+                // ##,notiname=Messaging,notitype=0,notititle=(650) 555-1212,noticontent=Nougat is sweet!
+                // ,notiaction=Dismiss*=!#
+                messageInfo message;
+
+
                 int pos1 = (int) cmd.find(",content=");
                 char user_idStr[MAXNAME] = {0};
                 strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
-                clients[index].user_id = atoi(user_idStr);
-                // printf("user_id = %d\n",clients[index].user_id);
+                int user_id = atoi(user_idStr);
+                clients[index].user_id = user_id;
+                clients[index].type = 202;
+                message.user_id = user_id;
+                // user id
+
+                int pos2 = (int) cmd.find("##,notiname=");
+                strncpy(message.mesgKey, recvbuff + pos1 + 13, (size_t) pos2 - pos1 - 13);
+                // key
+
+                int pos3 = (int) cmd.find("*=!#");
+                strncpy(message.rawContent, recvbuff + pos2 + 3, (size_t) pos3 - pos2 - 3);
+                // raw content
+
                 boost::uuids::random_generator generator;
                 boost::uuids::uuid uuid0 = generator();
-                messageInfo message;
-                message.user_id = atoi(user_idStr);
-
+                messages.insert(std::make_pair(uuid0, message));
+                sendMesgIdToWin(uuid0, user_id);
                 break; // close connection
             }
 
