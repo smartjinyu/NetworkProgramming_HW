@@ -52,13 +52,18 @@ void setReUseAddr(int sockfd) {
 }
 
 
-void showClientTerminatedInfo(int sockfd) {
+void showClientTerminatedInfo(int index) {
+    int sockfd = clients[index].sockfd;
     struct sockaddr_in terminatedAddr;
     bzero(&terminatedAddr, sizeof(terminatedAddr));
     socklen_t len = sizeof(terminatedAddr);
     getpeername(sockfd, (struct sockaddr *) &terminatedAddr, &len);
-    printf("Client terminated, ip = %s, port = %d\n",
-           inet_ntoa(terminatedAddr.sin_addr), ntohs(terminatedAddr.sin_port));
+    printf("Client terminated, ip = %s, port = %d, type = %d, user_id = %d\n",
+           inet_ntoa(terminatedAddr.sin_addr),
+           ntohs(terminatedAddr.sin_port),
+           clients[index].type,
+           clients[index].user_id
+    );
 }
 
 void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
@@ -116,15 +121,13 @@ void recvFromClient(int index) {
                 strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
                 clients[index].type = 201;
                 clients[index].user_id = atoi(user_idStr);
-                // printf("user_id = %d\n",clients[index].user_id);
+                // keep connection alive
             } else if (type == 202) {
                 // Android send message info
                 // type=202,userid=10001,content=key=0|com.android.messaging|0|com.android.messaging:sms:|10048
                 // ##,notiname=Messaging,notitype=0,notititle=(650) 555-1212,noticontent=Nougat is sweet!
                 // ,notiaction=Dismiss*=!#
                 messageInfo message;
-
-
                 int pos1 = (int) cmd.find(",content=");
                 char user_idStr[MAXNAME] = {0};
                 strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
@@ -147,6 +150,15 @@ void recvFromClient(int index) {
                 messages.insert(std::make_pair(uuid0, message));
                 sendMesgIdToWin(uuid0, user_id);
                 break; // close connection
+            } else if (type == 101) {
+                // main connection from PC client
+                // type=101,userid=10001*=!#
+                int pos1 = (int) cmd.find("*=!#");
+                char user_idStr[MAXNAME] = {0};
+                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
+                clients[index].type = 101;
+                clients[index].user_id = atoi(user_idStr);
+                // keep connection alve
             }
 
         }
@@ -169,7 +181,7 @@ void *servFunc(void *arg) {
     recvFromClient(index);
 
     // thread terminated
-    showClientTerminatedInfo(clients[index].sockfd);
+    showClientTerminatedInfo(index);
     clients[index].clear();
 
     close(connfd);
