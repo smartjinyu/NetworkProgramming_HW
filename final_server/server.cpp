@@ -71,7 +71,7 @@ void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
     for (int i = 0; i < MAXCLIENTS; i++) {
         if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 101) {
             char sendline[MAXNAME] = {0};
-            strcpy(sendline, boost::uuids::to_string(uuid));
+            strcpy(sendline, boost::uuids::to_string(uuid).c_str());
             strcat(sendline, "#");
             write(clients[i].sockfd, sendline, strlen(sendline));
             printf("send mesg_id to win client, sockfd = %d, content = %s", clients[i].sockfd, sendline);
@@ -84,11 +84,11 @@ void sendMesgIdToWin(boost::uuids::uuid uuid, int user_id) {
 void sendActionToAndroid(boost::uuids::uuid uuid, int user_id, char *actionIndex) {
     // send action back to Android main connection (type 201)
     for (int i = 0; i < MAXCLIENTS; i++) {
-        if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 201) {
+        if (clients[i].sockfd != -1 && clients[i].user_id == user_id && clients[i].type == 202) {
             char sendline[MAXLINE] = {0};
             strcpy(sendline, "key=");
             strcat(sendline, messages[uuid].mesgKey);
-            strcat(sendline, "actionindex=%d");
+            strcat(sendline, ",actionindex=");
             strcat(sendline, actionIndex);
             strcat(sendline, "*=!#");
             write(clients[i].sockfd, sendline, strlen(sendline));
@@ -130,16 +130,7 @@ void recvFromClient(int index) {
             strncpy(typeStr, recvbuff + 5, (size_t) pos0 - 5);
             int type = atoi(typeStr);
             // printf("connection type = %d\n",type);
-            if (type == 201) {
-                // main connection from android client
-                // type=201,userid=10001*=!#
-                int pos1 = (int) cmd.find("*=!#");
-                char user_idStr[MAXNAME] = {0};
-                strncpy(user_idStr, recvbuff + pos0 + 8, (size_t) pos1 - pos0 - 8);
-                clients[index].type = 201;
-                clients[index].user_id = atoi(user_idStr);
-                // keep connection alive
-            } else if (type == 202) {
+            if (type == 202) {
                 // Android send message info
                 // type=202,userid=10001,content=key=0|com.android.messaging|0|com.android.messaging:sms:|10048
                 // ##,notiname=Messaging,notitype=0,notititle=(650) 555-1212,noticontent=Nougat is sweet!
@@ -166,7 +157,7 @@ void recvFromClient(int index) {
                 boost::uuids::uuid uuid0 = generator();
                 messages.insert(std::make_pair(uuid0, message));
                 sendMesgIdToWin(uuid0, user_id);
-                break; // close connection
+                //break; // close connection
             } else if (type == 101) {
                 // main connection from PC client
                 // type=101,userid=10001*=!#
@@ -231,6 +222,8 @@ void recvFromClient(int index) {
                 break;
             }
 
+        }else{
+            break; // unexpected message
         }
 
     }
