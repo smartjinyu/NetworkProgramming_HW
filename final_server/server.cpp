@@ -306,6 +306,7 @@ int main(int argc, char **argv) {
     bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
     listen(listenfd, LISTENQ);
     messages.clear();
+    printf("This is the server of Android Notification Mirror, final project of Network Programming\n");
 
     for (;;) {
         bzero(&clientaddr, sizeof(clientaddr));
